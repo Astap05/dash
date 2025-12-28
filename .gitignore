@@ -1,4 +1,4 @@
-# Logs
+# --- Logs (Логи) ---
 logs
 *.log
 npm-debug.log*
@@ -7,19 +7,43 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
+# --- Dependencies (Зависимости) ---
+node_modules/
 
-# Editor directories and files
+# --- Build Output (Результат сборки Vite) ---
+dist/
+dist-ssr/
+coverage/
+
+# --- Environment Variables (Переменные окружения - ВАЖНО) ---
+.env
+.env.local
+.env.*.local
+# Оставляем пример, если он есть
+!.env.example
+
+# --- Python (Так как у тебя есть .py файлы) ---
+__pycache__/
+*.py[cod]
+*$py.class
+# Виртуальные окружения (на будущее)
+venv/
+.venv/
+env/
+
+# --- IDE & Editors (Настройки редакторов) ---
 .vscode/*
 !.vscode/extensions.json
-.idea
-.DS_Store
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+.idea/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
 
+# --- OS Files (Системный мусор) ---
+.DS_Store
+Thumbs.db
