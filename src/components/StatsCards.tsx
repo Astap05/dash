@@ -11,21 +11,33 @@ interface StatCardProps {
 }
 
 function StatCard({ title, value, change, changePositive, graphColor, chartData }: StatCardProps) {
+  // Генерируем больше точек данных для более детального графика (как на фото)
+  const dataPoints = 30
+  
   // Нормализация данных графика для отображения
   const normalizedData = chartData && chartData.length > 0
-    ? chartData.map((val) => {
-        const min = Math.min(...chartData)
-        const max = Math.max(...chartData)
+    ? (() => {
+        // Если данных меньше чем нужно, интерполируем
+        const extendedData = []
+        for (let i = 0; i < dataPoints; i++) {
+          const index = Math.floor((i / dataPoints) * chartData.length)
+          extendedData.push(chartData[index] || chartData[chartData.length - 1])
+        }
+        const min = Math.min(...extendedData)
+        const max = Math.max(...extendedData)
         const range = max - min || 1
-        return ((val - min) / range) * 60 + 20 // Масштабируем от 20% до 80%
-      })
-    : Array.from({ length: 20 }).map(() => Math.random() * 60 + 20)
+        return extendedData.map((val) => {
+          // Масштабируем от 10% до 100% для более динамичного вида
+          return ((val - min) / range) * 90 + 10
+        })
+      })()
+    : Array.from({ length: dataPoints }).map(() => Math.random() * 80 + 20)
 
   return (
     <div className="bg-[#1a1a1a] rounded-xl p-6 border border-[#2a2a2a]">
-      <div className="text-sm text-gray-400 mb-2">{title}</div>
+      <div className="text-sm text-gray-400 mb-2 uppercase">{title}</div>
       <div className="text-3xl font-bold mb-2">{value}</div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 mb-4">
         <span
           className={`text-sm font-medium ${
             changePositive ? 'text-green-400' : 'text-red-400'
@@ -39,13 +51,15 @@ function StatCard({ title, value, change, changePositive, graphColor, chartData 
           <TrendingDown className="w-4 h-4 text-red-400" />
         )}
       </div>
-      <div className="mt-4 h-12 flex items-end gap-1">
+      {/* График с тонкими столбцами (как на фото) */}
+      <div className="mt-4 h-20 flex items-end gap-[1px]">
         {normalizedData.map((height, i) => (
           <div
             key={i}
             className={`flex-1 rounded-t ${graphColor} transition-all duration-300`}
             style={{
-              height: `${height}%`,
+              height: `${Math.max(height, 8)}%`, // Минимум 8% для видимости
+              minHeight: '3px',
             }}
           />
         ))}
