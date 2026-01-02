@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { isAuthenticated, getCurrentUser } from '../services/authService'
+import { isAuthenticated } from '../services/authService'
 import AuthModal from './AuthModal'
 
 interface AuthGuardProps {
@@ -49,4 +49,3 @@ function AuthGuard({ children }: AuthGuardProps) {
 }
 
 export default AuthGuard
-

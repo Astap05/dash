@@ -19,8 +19,19 @@ function WalletButton({ variant = 'header' }: WalletButtonProps) {
     return num.toFixed(4)
   }
 
-  // Показываем подключенный кошелек только если isConnected === true
-  // Если есть адрес, но isConnected === false, значит это сохраненный адрес, но не подключенный
+  // Функция перемещена сюда, чтобы быть доступной для всех условий ниже
+  const handleConnect = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    console.log('Button clicked, connecting wallet...', { isConnecting, connectWallet })
+    if (!isConnecting) {
+      connectWallet().catch((error) => {
+        console.error('Error in connectWallet:', error)
+      })
+    }
+  }
+
+  // Показываем подключенный кошелек
   if (isConnected && address) {
     return (
       <div className="flex items-center gap-3">
@@ -46,7 +57,7 @@ function WalletButton({ variant = 'header' }: WalletButtonProps) {
     )
   }
 
-  // Если есть адрес, но не подключен - показываем кнопку подключения
+  // Если есть адрес, но не подключен
   if (address && !isConnected) {
     return (
       <button
@@ -66,17 +77,7 @@ function WalletButton({ variant = 'header' }: WalletButtonProps) {
     )
   }
 
-  const handleConnect = (e: React.MouseEvent<HTMLButtonElement>) => {
-    e.preventDefault()
-    e.stopPropagation()
-    console.log('Button clicked, connecting wallet...', { isConnecting, connectWallet })
-    if (!isConnecting) {
-      connectWallet().catch((error) => {
-        console.error('Error in connectWallet:', error)
-      })
-    }
-  }
-
+  // Стандартная кнопка подключения
   return (
     <button
       onClick={handleConnect}
@@ -95,4 +96,3 @@ function WalletButton({ variant = 'header' }: WalletButtonProps) {
 }
 
 export default WalletButton
-

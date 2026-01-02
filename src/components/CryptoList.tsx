@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
-import { Search, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
-import { useAllCryptoPrices, CryptoMarketData } from '../hooks/useAllCryptoPrices'
+import { Search, ArrowUp, ArrowDown } from 'lucide-react'
+import { useAllCryptoPrices } from '../hooks/useAllCryptoPrices'
 import OurTokenInfo from './OurTokenInfo'
 
 type SortField = 'market_cap' | 'price' | 'change' | 'volume' | 'priceInOurToken'
@@ -15,24 +15,20 @@ function CryptoList() {
 
   const { cryptos, isLoading, error, isUsingDemo, totalPages, ourTokenPrice, ourTokenSymbol, ourTokenName } =
     useAllCryptoPrices({
-      page: searchQuery.trim() ? 1 : Math.min(currentPage, 3), // Ограничиваем до 3 страниц для стабильности
-      perPage: searchQuery.trim() ? 150 : perPage, // При поиске загружаем до 150 монет для фильтрации
+      page: searchQuery.trim() ? 1 : Math.min(currentPage, 3),
+      perPage: searchQuery.trim() ? 150 : perPage,
       searchQuery,
     })
 
-  // Если есть поиск, делаем пагинацию на клиенте
   const displayCryptos = useMemo(() => {
     if (!searchQuery.trim()) {
-      return cryptos // Без поиска показываем все загруженные данные
+      return cryptos
     }
-    
-    // С поиском - делаем пагинацию на клиенте
     const startIndex = (currentPage - 1) * perPage
     const endIndex = startIndex + perPage
     return cryptos.slice(startIndex, endIndex)
   }, [cryptos, searchQuery, currentPage, perPage])
 
-  // Пересчитываем totalPages для поиска
   const actualTotalPages = useMemo(() => {
     if (searchQuery.trim()) {
       return Math.ceil(cryptos.length / perPage) || 1
@@ -40,7 +36,6 @@ function CryptoList() {
     return totalPages
   }, [searchQuery, cryptos.length, perPage, totalPages])
 
-  // Сортировка данных
   const sortedCryptos = useMemo(() => {
     const sorted = [...displayCryptos].sort((a, b) => {
       let aValue: number
@@ -117,10 +112,8 @@ function CryptoList() {
 
   return (
     <div className="space-y-6">
-      {/* Информация о нашем токене */}
       <OurTokenInfo price={ourTokenPrice} symbol={ourTokenSymbol} name={ourTokenName} />
 
-      {/* Поиск и статус */}
       <div className="bg-[#1a1a1a] rounded-xl p-6 border border-[#2a2a2a]">
         <div className="flex flex-col md:flex-row gap-4 items-center justify-between mb-6">
           <div className="relative flex-1 w-full md:w-auto">
@@ -131,7 +124,7 @@ function CryptoList() {
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value)
-                setCurrentPage(1) // Сбрасываем на первую страницу при поиске
+                setCurrentPage(1)
               }}
               className="w-full pl-10 pr-4 py-2 bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-orange-500"
             />
@@ -157,49 +150,27 @@ function CryptoList() {
           </div>
         )}
 
-        {/* Таблица для десктопа, карточки для мобильных */}
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-[#2a2a2a] text-left text-sm text-gray-400">
                 <th className="pb-3 px-4">#</th>
                 <th className="pb-3 px-4">Монета</th>
-                <th className="pb-3 px-4">
-                  <SortButton field="price">Цена (USD)</SortButton>
-                </th>
-                <th className="pb-3 px-4">
-                  <SortButton field="priceInOurToken">Цена ({ourTokenSymbol})</SortButton>
-                </th>
-                <th className="pb-3 px-4">
-                  <SortButton field="change">24ч</SortButton>
-                </th>
-                <th className="pb-3 px-4">
-                  <SortButton field="volume">Объем 24ч</SortButton>
-                </th>
-                <th className="pb-3 px-4">
-                  <SortButton field="market_cap">Market Cap</SortButton>
-                </th>
+                <th className="pb-3 px-4"><SortButton field="price">Цена (USD)</SortButton></th>
+                <th className="pb-3 px-4"><SortButton field="priceInOurToken">Цена ({ourTokenSymbol})</SortButton></th>
+                <th className="pb-3 px-4"><SortButton field="change">24ч</SortButton></th>
+                <th className="pb-3 px-4"><SortButton field="volume">Объем 24ч</SortButton></th>
+                <th className="pb-3 px-4"><SortButton field="market_cap">Market Cap</SortButton></th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
-                <tr>
-                  <td colSpan={7} className="text-center py-8 text-gray-400">
-                    Загрузка данных...
-                  </td>
-                </tr>
+                <tr><td colSpan={7} className="text-center py-8 text-gray-400">Загрузка данных...</td></tr>
               ) : sortedCryptos.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="text-center py-8 text-gray-400">
-                    Монеты не найдены
-                  </td>
-                </tr>
+                <tr><td colSpan={7} className="text-center py-8 text-gray-400">Монеты не найдены</td></tr>
               ) : (
                 sortedCryptos.map((crypto, index) => (
-                  <tr
-                    key={crypto.id}
-                    className="border-b border-[#2a2a2a] hover:bg-[#2a2a2a]/50 transition-colors"
-                  >
+                  <tr key={crypto.id} className="border-b border-[#2a2a2a] hover:bg-[#2a2a2a]/50 transition-colors">
                     <td className="py-4 px-4 text-gray-400">{(currentPage - 1) * perPage + index + 1}</td>
                     <td className="py-4 px-4">
                       <div className="flex items-center gap-3">
@@ -207,10 +178,7 @@ function CryptoList() {
                           src={crypto.image}
                           alt={crypto.name}
                           className="w-8 h-8 rounded-full"
-                          onError={(e) => {
-                            const target = e.target as HTMLImageElement
-                            target.style.display = 'none'
-                          }}
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
                         />
                         <div>
                           <div className="font-semibold">{crypto.name}</div>
@@ -219,16 +187,9 @@ function CryptoList() {
                       </div>
                     </td>
                     <td className="py-4 px-4 font-semibold">{formatPrice(crypto.current_price)}</td>
-                    <td className="py-4 px-4 font-semibold text-orange-400">
-                      {crypto.priceInOurToken.toFixed(2)} {ourTokenSymbol}
-                    </td>
-                    <td
-                      className={`py-4 px-4 ${
-                        crypto.price_change_percentage_24h >= 0 ? 'text-green-400' : 'text-red-400'
-                      }`}
-                    >
-                      {crypto.price_change_percentage_24h >= 0 ? '+' : ''}
-                      {crypto.price_change_percentage_24h.toFixed(2)}%
+                    <td className="py-4 px-4 font-semibold text-orange-400">{crypto.priceInOurToken.toFixed(2)} {ourTokenSymbol}</td>
+                    <td className={`py-4 px-4 ${crypto.price_change_percentage_24h >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {crypto.price_change_percentage_24h >= 0 ? '+' : ''}{crypto.price_change_percentage_24h.toFixed(2)}%
                     </td>
                     <td className="py-4 px-4 text-gray-400">{formatNumber(crypto.total_volume)}</td>
                     <td className="py-4 px-4 text-gray-400">{formatNumber(crypto.market_cap)}</td>
@@ -239,28 +200,21 @@ function CryptoList() {
           </table>
         </div>
 
-        {/* Мобильная версия - карточки */}
         <div className="md:hidden space-y-4">
           {isLoading ? (
             <div className="text-center py-8 text-gray-400">Загрузка данных...</div>
           ) : sortedCryptos.length === 0 ? (
             <div className="text-center py-8 text-gray-400">Монеты не найдены</div>
           ) : (
-            sortedCryptos.map((crypto, index) => (
-              <div
-                key={crypto.id}
-                className="bg-[#0a0a0a] rounded-lg p-4 border border-[#2a2a2a]"
-              >
+            sortedCryptos.map((crypto) => (
+              <div key={crypto.id} className="bg-[#0a0a0a] rounded-lg p-4 border border-[#2a2a2a]">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-3">
                     <img
                       src={crypto.image}
                       alt={crypto.name}
                       className="w-10 h-10 rounded-full"
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement
-                        target.style.display = 'none'
-                      }}
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
                     />
                     <div>
                       <div className="font-semibold">{crypto.name}</div>
@@ -269,22 +223,15 @@ function CryptoList() {
                   </div>
                   <div className="text-right">
                     <div className="font-semibold">{formatPrice(crypto.current_price)}</div>
-                    <div
-                      className={`text-sm ${
-                        crypto.price_change_percentage_24h >= 0 ? 'text-green-400' : 'text-red-400'
-                      }`}
-                    >
-                      {crypto.price_change_percentage_24h >= 0 ? '+' : ''}
-                      {crypto.price_change_percentage_24h.toFixed(2)}%
+                    <div className={`text-sm ${crypto.price_change_percentage_24h >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {crypto.price_change_percentage_24h >= 0 ? '+' : ''}{crypto.price_change_percentage_24h.toFixed(2)}%
                     </div>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div>
                     <div className="text-gray-400 mb-1">Цена ({ourTokenSymbol})</div>
-                    <div className="font-semibold text-orange-400">
-                      {crypto.priceInOurToken.toFixed(2)} {ourTokenSymbol}
-                    </div>
+                    <div className="font-semibold text-orange-400">{crypto.priceInOurToken.toFixed(2)} {ourTokenSymbol}</div>
                   </div>
                   <div>
                     <div className="text-gray-400 mb-1">Market Cap</div>
@@ -296,7 +243,6 @@ function CryptoList() {
           )}
         </div>
 
-        {/* Пагинация */}
         {!isLoading && sortedCryptos.length > 0 && (
           <div className="flex items-center justify-between mt-6">
             <button
@@ -306,9 +252,7 @@ function CryptoList() {
             >
               Назад
             </button>
-            <span className="text-sm text-gray-400">
-              Страница {currentPage} из {actualTotalPages}
-            </span>
+            <span className="text-sm text-gray-400">Страница {currentPage} из {actualTotalPages}</span>
             <button
               onClick={() => setCurrentPage((p) => p + 1)}
               disabled={currentPage >= actualTotalPages}
@@ -324,4 +268,3 @@ function CryptoList() {
 }
 
 export default CryptoList
-

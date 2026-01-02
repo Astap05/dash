@@ -1,4 +1,4 @@
-import { TrendingUp, DollarSign, Activity } from 'lucide-react'
+import { TrendingUp, Activity } from 'lucide-react'
 
 interface OurTokenInfoProps {
   price: number
@@ -7,11 +7,10 @@ interface OurTokenInfoProps {
 }
 
 function OurTokenInfo({ price, symbol, name }: OurTokenInfoProps) {
-  // Заглушки для статистики нашего токена
-  const marketCap = 10000000 // $10M (заглушка)
-  const totalSupply = 100000000 // 100M токенов (заглушка)
-  const change24h = 2.5 // +2.5% (заглушка)
-  const volume24h = 500000 // $500K (заглушка)
+  const marketCap = 10000000
+  const totalSupply = 100000000
+  const change24h = 2.5
+  const volume24h = 500000
 
   return (
     <div className="bg-gradient-to-br from-orange-500/20 to-yellow-500/20 rounded-xl p-6 border border-orange-500/30">
@@ -66,4 +65,3 @@ function OurTokenInfo({ price, symbol, name }: OurTokenInfoProps) {
 }
 
 export default OurTokenInfo
-

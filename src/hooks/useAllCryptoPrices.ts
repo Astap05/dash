@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react'
-import { CryptoPrice } from '../services/cryptoService'
 
 export interface CryptoMarketData {
   id: string
@@ -10,7 +9,6 @@ export interface CryptoMarketData {
   price_change_percentage_24h: number
   market_cap: number
   total_volume: number
-  // Курс к нашему токену (заглушка)
   priceInOurToken: number
 }
 
@@ -28,10 +26,9 @@ export function useAllCryptoPrices(options: UseAllCryptoPricesOptions = {}) {
   const [totalPages, setTotalPages] = useState(1)
   const isUsingDemoRef = useRef(false)
 
-  // Заглушка для нашего токена
-  const OUR_TOKEN_PRICE_USD = 0.1 // Цена нашего токена в USD (заглушка)
-  const OUR_TOKEN_SYMBOL = 'OUR' // Символ нашего токена (заглушка)
-  const OUR_TOKEN_NAME = 'Our Token' // Название нашего токена (заглушка)
+  const OUR_TOKEN_PRICE_USD = 0.1
+  const OUR_TOKEN_SYMBOL = 'OUR'
+  const OUR_TOKEN_NAME = 'Our Token'
 
   useEffect(() => {
     const fetchCryptos = async () => {
@@ -39,36 +36,24 @@ export function useAllCryptoPrices(options: UseAllCryptoPricesOptions = {}) {
       setError(null)
 
       try {
-        // Ограничиваем page до 3, чтобы не превышать лимиты API
         const safePage = Math.min(page, 3)
         
-        // Пробуем получить данные из CoinGecko
         const response = await fetch(
           `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=${perPage}&page=${safePage}&sparkline=false&price_change_percentage=24h`,
-          {
-            headers: {
-              'Accept': 'application/json',
-            },
-          }
+          { headers: { 'Accept': 'application/json' } }
         )
 
         if (!response.ok) {
           if (response.status === 429) {
-            // Rate limit - пробуем подождать и повторить один раз
             console.warn('CoinGecko rate limit, waiting and retrying...')
             await new Promise(resolve => setTimeout(resolve, 2000))
             
             const retryResponse = await fetch(
               `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=${perPage}&page=${safePage}&sparkline=false&price_change_percentage=24h`,
-              {
-                headers: {
-                  'Accept': 'application/json',
-                },
-              }
+              { headers: { 'Accept': 'application/json' } }
             )
             
             if (!retryResponse.ok) {
-              // Если повторная попытка не удалась, используем демо данные
               console.warn('CoinGecko still rate limited, using demo data')
               isUsingDemoRef.current = true
               setCryptos(generateDemoData())
@@ -76,7 +61,6 @@ export function useAllCryptoPrices(options: UseAllCryptoPricesOptions = {}) {
               return
             }
             
-            // Используем данные из повторной попытки
             const retryData = await retryResponse.json()
             isUsingDemoRef.current = false
             
@@ -119,7 +103,6 @@ export function useAllCryptoPrices(options: UseAllCryptoPricesOptions = {}) {
         const data = await response.json()
         isUsingDemoRef.current = false
 
-        // Преобразуем данные и добавляем курс к нашему токену
         const cryptosWithOurToken: CryptoMarketData[] = data.map((coin: any) => ({
           id: coin.id,
           symbol: coin.symbol.toUpperCase(),
@@ -129,11 +112,9 @@ export function useAllCryptoPrices(options: UseAllCryptoPricesOptions = {}) {
           price_change_percentage_24h: coin.price_change_percentage_24h || 0,
           market_cap: coin.market_cap || 0,
           total_volume: coin.total_volume || 0,
-          // Рассчитываем курс к нашему токену: цена монеты / цена нашего токена
           priceInOurToken: coin.current_price ? coin.current_price / OUR_TOKEN_PRICE_USD : 0,
         }))
 
-        // Если есть поиск, фильтруем данные
         let filteredCryptos = cryptosWithOurToken
         if (searchQuery.trim()) {
           const query = searchQuery.toLowerCase().trim()
@@ -147,14 +128,10 @@ export function useAllCryptoPrices(options: UseAllCryptoPricesOptions = {}) {
 
         setCryptos(filteredCryptos)
         
-        // Если есть поиск, рассчитываем страницы на основе отфильтрованных данных
-        // Если нет поиска, ограничиваем до 3 страниц (150 монет) для стабильной работы
         if (searchQuery.trim()) {
           const totalItems = filteredCryptos.length
           setTotalPages(totalItems > 0 ? Math.ceil(totalItems / perPage) : 1)
         } else {
-          // Ограничиваем до 3 страниц (150 монет) чтобы избежать rate limit
-          // Это обеспечит стабильную работу в Live режиме
           setTotalPages(3)
         }
       } catch (err: any) {
@@ -169,7 +146,6 @@ export function useAllCryptoPrices(options: UseAllCryptoPricesOptions = {}) {
 
     fetchCryptos()
 
-    // Обновляем данные каждые 60 секунд для реальных данных, каждые 5 секунд для демо
     const interval = setInterval(() => {
       if (!isUsingDemoRef.current) {
         fetchCryptos()
@@ -181,14 +157,12 @@ export function useAllCryptoPrices(options: UseAllCryptoPricesOptions = {}) {
     return () => clearInterval(interval)
   }, [page, perPage, searchQuery, OUR_TOKEN_PRICE_USD])
 
-  // Обновляем totalPages при изменении параметров
   useEffect(() => {
     if (!searchQuery.trim()) {
-      setTotalPages(3) // Всегда 3 страницы для основных монет (150 монет)
+      setTotalPages(3)
     }
   }, [searchQuery])
 
-  // Генерация демо данных
   function generateDemoData(): CryptoMarketData[] {
     const demoCryptos = [
       { symbol: 'BTC', name: 'Bitcoin', basePrice: 43000 },
@@ -209,9 +183,9 @@ export function useAllCryptoPrices(options: UseAllCryptoPricesOptions = {}) {
     ]
 
     return demoCryptos.map((crypto) => {
-      const priceVariation = 1 + (Math.random() - 0.5) * 0.1 // ±5% вариация
+      const priceVariation = 1 + (Math.random() - 0.5) * 0.1
       const currentPrice = crypto.basePrice * priceVariation
-      const change24h = (Math.random() - 0.5) * 10 // -5% до +5%
+      const change24h = (Math.random() - 0.5) * 10
 
       return {
         id: crypto.symbol.toLowerCase(),
@@ -238,4 +212,3 @@ export function useAllCryptoPrices(options: UseAllCryptoPricesOptions = {}) {
     ourTokenName: OUR_TOKEN_NAME,
   }
 }
-
