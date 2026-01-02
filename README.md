@@ -10,7 +10,7 @@
 - Tailwind CSS
 - Lucide React (иконки)
 
-##    Установка
+ ##      Установка
 
 ```bash
 npm install
