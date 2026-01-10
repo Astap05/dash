@@ -20,7 +20,7 @@ interface InvoicePaymentPageProps {
 
 function InvoicePaymentPage({ invoiceData, onBack }: InvoicePaymentPageProps) {
   // ДОБАВИЛИ isConnected и address СЮДА
-  const { connectWallet, isConnected, address } = useWalletContext()
+  const { connectWallet, connectWalletConnect, isConnected, address, walletType } = useWalletContext()
   
   const [copiedAmount, setCopiedAmount] = useState(false)
   const [copiedAddress, setCopiedAddress] = useState(false)
@@ -90,6 +90,12 @@ function InvoicePaymentPage({ invoiceData, onBack }: InvoicePaymentPageProps) {
   const handleConnectMetaMask = async () => {
     if (!isConnected) {
        await connectWallet()
+    }
+  }
+
+  const handleConnectWalletConnect = async () => {
+    if (!isConnected) {
+       await connectWalletConnect()
     }
   }
 
@@ -187,32 +193,45 @@ function InvoicePaymentPage({ invoiceData, onBack }: InvoicePaymentPageProps) {
               <p className="text-sm text-gray-400 mb-3">Or pay with Web3 wallet</p>
               <div className="flex flex-col sm:flex-row gap-3">
                 
-                {/* ВОТ ТУТ ГЛАВНОЕ ИЗМЕНЕНИЕ: Условие для кнопки MetaMask */}
-                {isConnected && address ? (
+                {/* MetaMask button */}
+                {walletType === 'metamask' && isConnected && address ? (
                   <button
                     disabled
                     className="flex items-center justify-center gap-2 px-6 py-3 bg-green-600 text-white font-semibold rounded-lg cursor-default opacity-90"
                   >
                     <Check className="w-5 h-5" />
-                    Connected: {formatAddress(address)}
+                    MetaMask: {formatAddress(address)}
                   </button>
                 ) : (
                   <button
                     onClick={handleConnectMetaMask}
-                    className="flex items-center justify-center gap-2 px-6 py-3 bg-[#f6851b] hover:bg-[#e2761b] text-white font-semibold rounded-lg transition-colors"
+                    disabled={isConnected}
+                    className="flex items-center justify-center gap-2 px-6 py-3 bg-[#f6851b] hover:bg-[#e2761b] text-white font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Wallet className="w-5 h-5" />
                     Connect MetaMask
                   </button>
                 )}
 
-                <button
-                  disabled
-                  className="flex items-center justify-center gap-2 px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Waves className="w-5 h-5" />
-                  WalletConnect
-                </button>
+                {/* WalletConnect button */}
+                {walletType === 'walletconnect' && isConnected && address ? (
+                  <button
+                    disabled
+                    className="flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg cursor-default opacity-90"
+                  >
+                    <Check className="w-5 h-5" />
+                    WalletConnect: {formatAddress(address)}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleConnectWalletConnect}
+                    disabled={isConnected}
+                    className="flex items-center justify-center gap-2 px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Waves className="w-5 h-5" />
+                    WalletConnect
+                  </button>
+                )}
               </div>
             </div>
           </div>

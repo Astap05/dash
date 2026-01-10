@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { ethers } from 'ethers'
+import { EthereumProvider } from '@walletconnect/ethereum-provider'
 import { updateUserWallet } from '../services/authService'
 
 interface WalletState {
@@ -8,6 +9,7 @@ interface WalletState {
   isConnecting: boolean
   balance: string | null
   chainId: number | null
+  walletType: 'metamask' | 'walletconnect' | null
 }
 
 export function useWallet() {
@@ -17,11 +19,15 @@ export function useWallet() {
     isConnecting: false,
     balance: null,
     chainId: null,
+    walletType: null,
   })
 
   // Флаги для предотвращения автоматического подключения
   const isInitialLoadRef = useRef(true)
   const userInitiatedConnectionRef = useRef(false)
+
+  // WalletConnect provider
+  const walletConnectProviderRef = useRef<any>(null)
 
   // Проверяем, установлен ли MetaMask
   const checkWalletInstalled = useCallback(() => {
@@ -64,23 +70,24 @@ export function useWallet() {
   }, [])
 
   // Получение баланса
-  const getBalance = useCallback(async (address: string) => {
-    if (!checkWalletInstalled()) return null
+  const getBalance = useCallback(async (address: string, provider?: any) => {
     try {
-      if (window.ethereum) {
-        let ethereumProvider = window.ethereum
+      let ethereumProvider = provider
+
+      if (!ethereumProvider) {
+        if (!checkWalletInstalled()) return null
+        ethereumProvider = window.ethereum
         if (Array.isArray(window.ethereum.providers)) {
           const metaMaskProvider = window.ethereum.providers.find((p: any) => p.isMetaMask === true)
           if (metaMaskProvider) {
             ethereumProvider = metaMaskProvider
           }
         }
-        
-        const provider = new ethers.BrowserProvider(ethereumProvider)
-        const balance = await provider.getBalance(address)
-        return ethers.formatEther(balance)
       }
-      return null
+
+      const ethersProvider = new ethers.BrowserProvider(ethereumProvider)
+      const balance = await ethersProvider.getBalance(address)
+      return ethers.formatEther(balance)
     } catch (error: any) {
       // Игнорируем ошибки RPC, но логируем их
       if (error.code === -32002 || error.message?.includes('RPC endpoint')) {
@@ -192,6 +199,7 @@ export function useWallet() {
         isConnecting: false,
         balance,
         chainId: Number(network.chainId),
+        walletType: 'metamask',
       })
 
       // Сохраняем адрес в localStorage
@@ -216,14 +224,128 @@ export function useWallet() {
     }
   }, [getBalance, checkWalletInstalled])
 
+  // Подключение через WalletConnect
+  const connectWalletConnect = useCallback(async () => {
+    console.log('connectWalletConnect called')
+
+    try {
+      console.log('Initializing WalletConnect provider...')
+      userInitiatedConnectionRef.current = true
+      setWallet((prev) => ({ ...prev, isConnecting: true }))
+
+      // Инициализируем WalletConnect провайдер
+      const provider = await EthereumProvider.init({
+        projectId: '0cfcc186a4e8df46239712f9d087ce49', // Нужно заменить на реальный projectId из WalletConnect Cloud
+        showQrModal: true,
+        chains: [1], // Ethereum mainnet
+        optionalChains: [137, 56, 43114], // Polygon, BSC, Avalanche
+        methods: ['eth_sendTransaction', 'personal_sign', 'eth_signTypedData'],
+        events: ['chainChanged', 'accountsChanged'],
+        metadata: {
+          name: 'Staking Dashboard',
+          description: 'Crypto staking platform',
+          url: window.location.origin,
+          icons: [`${window.location.origin}/icon.png`],
+        },
+      })
+
+      walletConnectProviderRef.current = provider
+
+      // Подключаемся
+      await provider.connect()
+      console.log('WalletConnect connected')
+
+      const accounts = provider.accounts
+      if (!accounts || accounts.length === 0) {
+        throw new Error('Аккаунты не получены от WalletConnect')
+      }
+
+      const address = accounts[0]
+      console.log('Address from WalletConnect:', address)
+
+      const ethersProvider = new ethers.BrowserProvider(provider)
+
+      let network
+      let balance
+
+      try {
+        network = await ethersProvider.getNetwork()
+        balance = await getBalance(address, provider)
+        console.log('WalletConnect Balance:', balance)
+      } catch (error: any) {
+        console.warn('Error getting network/balance (RPC issue), continuing anyway:', error.message)
+        network = { chainId: BigInt(1) }
+        balance = null
+      }
+
+      setWallet({
+        address,
+        isConnected: true,
+        isConnecting: false,
+        balance,
+        chainId: Number(network.chainId),
+        walletType: 'walletconnect',
+      })
+
+      // Сохраняем адрес
+      localStorage.setItem('walletAddress', address)
+      updateUserWallet(address)
+
+      // Слушаем события WalletConnect
+      provider.on('accountsChanged', (accounts: string[]) => {
+        console.log('WalletConnect accounts changed:', accounts)
+        if (accounts.length === 0) {
+          disconnectWallet()
+        } else {
+          // Обновляем адрес
+          const newAddress = accounts[0]
+          setWallet((prev) => ({ ...prev, address: newAddress }))
+          localStorage.setItem('walletAddress', newAddress)
+          updateUserWallet(newAddress)
+        }
+      })
+
+      provider.on('chainChanged', () => {
+        window.location.reload()
+      })
+
+      provider.on('disconnect', () => {
+        console.log('WalletConnect disconnected')
+        disconnectWallet()
+      })
+
+    } catch (error: any) {
+      console.error('Error connecting WalletConnect:', error)
+      setWallet((prev) => ({ ...prev, isConnecting: false }))
+
+      if (error.code === 4001) {
+        alert('Подключение через WalletConnect было отклонено.')
+      } else {
+        const errorMsg = error.message || error.toString() || 'Неизвестная ошибка'
+        alert('Ошибка подключения через WalletConnect: ' + errorMsg)
+      }
+    }
+  }, [getBalance])
+
   // Отключение кошелька
   const disconnectWallet = useCallback(() => {
+    // Отключаем WalletConnect если подключен
+    if (walletConnectProviderRef.current) {
+      try {
+        walletConnectProviderRef.current.disconnect()
+      } catch (error) {
+        console.warn('Error disconnecting WalletConnect:', error)
+      }
+      walletConnectProviderRef.current = null
+    }
+
     setWallet({
       address: null,
       isConnected: false,
       isConnecting: false,
       balance: null,
       chainId: null,
+      walletType: null,
     })
     localStorage.removeItem('walletAddress')
     updateUserWallet(null)
@@ -272,6 +394,7 @@ export function useWallet() {
             isConnecting: false,
             balance: null,
             chainId: null,
+            walletType: null,
           })
           // НЕ обновляем сохраненный адрес автоматически - пользователь должен явно подключиться
         }
@@ -302,7 +425,11 @@ export function useWallet() {
     if (!wallet.address) return
 
     const updateBalance = async () => {
-      const balance = await getBalance(wallet.address!)
+      let provider
+      if (wallet.walletType === 'walletconnect' && walletConnectProviderRef.current) {
+        provider = walletConnectProviderRef.current
+      }
+      const balance = await getBalance(wallet.address!, provider)
       setWallet((prev) => ({ ...prev, balance }))
     }
 
@@ -310,11 +437,12 @@ export function useWallet() {
     const interval = setInterval(updateBalance, 10000) // Обновляем каждые 10 секунд
 
     return () => clearInterval(interval)
-  }, [wallet.address, getBalance])
+  }, [wallet.address, wallet.walletType, getBalance])
 
   return {
     ...wallet,
     connectWallet,
+    connectWalletConnect,
     disconnectWallet,
     isMetaMaskInstalled: checkWalletInstalled(),
   }

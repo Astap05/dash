@@ -7,7 +7,9 @@ interface WalletContextType {
   isConnecting: boolean
   balance: string | null
   chainId: number | null
+  walletType: 'metamask' | 'walletconnect' | null
   connectWallet: () => Promise<void>
+  connectWalletConnect: () => Promise<void>
   disconnectWallet: () => void
   isMetaMaskInstalled: boolean
 }
