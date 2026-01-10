@@ -1,275 +1,238 @@
-import { useState } from 'react'
-import { X } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { Search, Info } from 'lucide-react'
+import { getCurrentUser } from '../services/authService'
 
-interface InvoiceOption {
+interface CryptoCurrency {
   id: string
-  title: string
+  symbol: string
+  name: string
   network: string
-  currency: 'USDT' | 'TRX'
-  exchangeRate: number
-  fee: number
-  networkFee?: number
-  minAmount: number
-  feeType: 'percentage' | 'fixed'
+  icon: string
+  available: boolean
 }
 
-const invoiceOptions: InvoiceOption[] = [
-  {
-    id: 'usdt-tron',
-    title: 'USDT - TRON',
-    network: 'TRON',
-    currency: 'USDT',
-    exchangeRate: 74.57,
-    fee: 0.65,
-    minAmount: 1,
-    feeType: 'percentage',
-  },
-  {
-    id: 'usdt-erc20',
-    title: 'USDT - ERC20',
-    network: 'ERC20',
-    currency: 'USDT',
-    exchangeRate: 74.57,
-    fee: 1.2,
-    networkFee: 0.2238,
-    minAmount: 2.2238,
-    feeType: 'percentage',
-  },
-  {
-    id: 'trx-tron',
-    title: 'TRX - TRON',
-    network: 'TRON',
-    currency: 'TRX',
-    exchangeRate: 21.63, // 1 USD = 21.63 TRX (примерно $0.29 за TRX)
-    fee: 0.65,
-    minAmount: 1,
-    feeType: 'percentage',
-  },
-  {
-    id: 'trx',
-    title: 'TRX',
-    network: 'TRON',
-    currency: 'TRX',
-    exchangeRate: 21.63,
-    fee: 1.2,
-    networkFee: 0,
-    minAmount: 15,
-    feeType: 'percentage',
-  },
+const networks = [
+  { id: 'all', name: 'ALL', label: 'ALL' },
+  { id: 'polygon', name: 'Polygon', label: 'Polygon (POLYGON)' },
+  { id: 'solana', name: 'Solana', label: 'Solana (SOL)' },
+  { id: 'ethereum', name: 'Ethereum', label: 'Ethereum (ERC20)' },
+  { id: 'bsc', name: 'BNB Chain', label: 'BNB Chain (BEP20)' },
+  { id: 'avax', name: 'AVAX C-Chain', label: 'AVAX C-C' },
 ]
 
-interface InvoiceCardProps {
-  option: InvoiceOption
-  onClose?: () => void
+const cryptocurrencies: CryptoCurrency[] = [
+  // USDT variants
+  { id: 'usdt-arb1', symbol: 'USDT', name: 'T USDT ARB1', network: 'arbitrum', icon: 'T', available: true },
+  { id: 'usdt-trc20', symbol: 'USDT', name: 'T USDT TRC20', network: 'tron', icon: 'T', available: true },
+  { id: 'usdt-sol', symbol: 'USDT', name: 'T USDT SOL', network: 'solana', icon: 'T', available: true },
+  { id: 'usdt-polygon', symbol: 'USDT', name: 'T USDT POLYGON', network: 'polygon', icon: 'T', available: true },
+  { id: 'usdt-avaxc', symbol: 'USDT', name: 'T USDT AVAXC', network: 'avax', icon: 'T', available: true },
+  { id: 'usdt-erc20', symbol: 'USDT', name: 'T USDT ERC20', network: 'ethereum', icon: 'T', available: true },
+  { id: 'usdt-bep20', symbol: 'USDT', name: 'T USDT BEP20', network: 'bsc', icon: 'T', available: true },
+  // Other cryptocurrencies
+  { id: 'btc', symbol: 'BTC', name: 'B BTC BITCOIN', network: 'bitcoin', icon: 'B', available: true },
+  { id: 'dai-bep20', symbol: 'DAI', name: '# DAI BEP20', network: 'bsc', icon: '#', available: true },
+  { id: 'dai-arb1', symbol: 'DAI', name: 'DAI ARB1', network: 'arbitrum', icon: 'DAI', available: true },
+  { id: 'dai-erc20', symbol: 'DAI', name: 'DAI ERC20', network: 'ethereum', icon: 'DAI', available: true },
+  { id: 'axs-erc20', symbol: 'AXS', name: 'AXS ERC20', network: 'ethereum', icon: 'AXS', available: true },
+]
+
+interface InvoiceCreatorProps {
+  onCreateInvoice: (invoiceData: {
+    email: string
+    amount: number
+    currency: CryptoCurrency
+  }) => void
 }
 
-function InvoiceCard({ option, onClose }: InvoiceCardProps) {
-  const [usdAmount, setUsdAmount] = useState(1000)
-  const [cryptoAmount, setCryptoAmount] = useState(1000)
+function InvoiceCreator({ onCreateInvoice }: InvoiceCreatorProps) {
+  const user = getCurrentUser()
+  const [email, setEmail] = useState(user?.email || '')
+  const [amount, setAmount] = useState('')
+  const [selectedNetwork, setSelectedNetwork] = useState('all')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedCrypto, setSelectedCrypto] = useState<CryptoCurrency | null>(null)
 
-  // Расчет суммы к получению
-  const calculateReceivedAmount = () => {
-    let amount = cryptoAmount
+  const filteredCryptos = useMemo(() => {
+    let filtered = cryptocurrencies
 
-    // Применяем комиссию
-    if (option.feeType === 'percentage') {
-      amount = amount * (1 - option.fee / 100)
-    } else {
-      amount = amount - option.fee
+    // Filter by network
+    if (selectedNetwork !== 'all') {
+      filtered = filtered.filter((crypto) => {
+        const networkMap: Record<string, string> = {
+          polygon: 'polygon',
+          solana: 'solana',
+          ethereum: 'ethereum',
+          bsc: 'bsc',
+          avax: 'avax',
+        }
+        return crypto.network === networkMap[selectedNetwork]
+      })
     }
 
-    // Вычитаем сетевую комиссию
-    if (option.networkFee) {
-      amount = amount - option.networkFee
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      filtered = filtered.filter(
+        (crypto) =>
+          crypto.name.toLowerCase().includes(query) ||
+          crypto.symbol.toLowerCase().includes(query) ||
+          crypto.network.toLowerCase().includes(query)
+      )
     }
 
-    return Math.max(0, amount)
-  }
+    return filtered
+  }, [selectedNetwork, searchQuery])
 
-  const receivedAmount = calculateReceivedAmount()
-
-  // Обновление суммы в USD при изменении криптовалюты
-  const handleCryptoChange = (value: number) => {
-    setCryptoAmount(value)
-    setUsdAmount(value / option.exchangeRate)
-  }
-
-  // Обновление суммы в криптовалюте при изменении USD
-  const handleUsdChange = (value: number) => {
-    setUsdAmount(value)
-    setCryptoAmount(value * option.exchangeRate)
-  }
-
-  const handleCreateInvoice = () => {
-    if (cryptoAmount < option.minAmount) {
-      alert(`Минимальная сумма: ${option.minAmount} ${option.currency}`)
+  const handleContinue = () => {
+    if (!email.trim()) {
+      alert('Пожалуйста, введите email')
       return
     }
 
-    // Здесь должна быть логика создания инвойса
-    alert(`Инвойс создан!\nСумма к получению: ${receivedAmount.toFixed(2)} ${option.currency}`)
+    if (!amount.trim() || parseFloat(amount) <= 0) {
+      alert('Пожалуйста, введите корректную сумму')
+      return
+    }
+
+    if (!selectedCrypto) {
+      alert('Пожалуйста, выберите криптовалюту')
+      return
+    }
+
+    onCreateInvoice({
+      email: email.trim(),
+      amount: parseFloat(amount),
+      currency: selectedCrypto,
+    })
   }
 
   return (
-    <div className="bg-[#1a1a1a] rounded-xl p-6 border border-[#2a2a2a] relative">
-      {onClose && (
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
-        >
-          <X className="w-5 h-5" />
-        </button>
-      )}
-
-      <h3 className="text-xl font-bold mb-6">{option.title}</h3>
-
-      {/* Сумма к получению */}
-      <div className="mb-6">
-        <div className="text-sm text-gray-400 mb-2">Amount to be received</div>
-        <div className="text-2xl font-bold text-orange-400">
-          {receivedAmount.toFixed(2)} {option.currency}
+    <div className="max-w-4xl mx-auto">
+      <div className="bg-[#1a1a1a] rounded-xl p-6 border border-[#2a2a2a]">
+        {/* Email Input */}
+        <div className="mb-6">
+          <label className="block text-sm text-gray-300 mb-2">Введите свой email</label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="m.igor.post@gmail.com"
+            className="w-full px-4 py-3 bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-orange-500 transition-colors"
+          />
         </div>
-      </div>
 
-      {/* Поля ввода */}
-      <div className="space-y-4 mb-6">
-        <div>
-          <label className="text-sm text-gray-400 mb-2 block">Amount in USD</label>
+        {/* Amount Input */}
+        <div className="mb-6">
+          <label className="block text-sm text-gray-300 mb-2">Введите сумму</label>
           <div className="relative">
-            <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">$</span>
+            <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400">$</span>
             <input
               type="number"
-              value={usdAmount}
-              onChange={(e) => handleUsdChange(parseFloat(e.target.value) || 0)}
-              className="w-full pl-8 pr-4 py-2 bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg text-white focus:outline-none focus:border-orange-500"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0.00"
+              step="0.01"
+              min="0"
+              className="w-full pl-8 pr-4 py-3 bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-orange-500 transition-colors"
             />
           </div>
         </div>
 
-        <div>
-          <label className="text-sm text-gray-400 mb-2 block">Amount in {option.currency}</label>
+        {/* Network Selection */}
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <label className="block text-sm text-gray-300">Выберите сеть</label>
+            <Info className="w-4 h-4 text-gray-400 cursor-help" />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {networks.map((network) => (
+              <button
+                key={network.id}
+                onClick={() => {
+                  setSelectedNetwork(network.id)
+                  setSelectedCrypto(null) // Reset selection when network changes
+                }}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  selectedNetwork === network.id
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-[#0a0a0a] text-gray-300 border border-[#2a2a2a] hover:border-orange-500/50'
+                }`}
+              >
+                {network.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Crypto Search */}
+        <div className="mb-6">
           <div className="relative">
+            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
-              type="number"
-              value={cryptoAmount}
-              onChange={(e) => handleCryptoChange(parseFloat(e.target.value) || 0)}
-              className="w-full pl-4 pr-16 py-2 bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg text-white focus:outline-none focus:border-orange-500"
+              type="text"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value)
+                setSelectedCrypto(null) // Reset selection when search changes
+              }}
+              placeholder="USDT ARB1"
+              className="w-full pl-12 pr-4 py-3 bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-orange-500 transition-colors"
             />
-            <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400">
-              {option.currency}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Кнопка создания инвойса */}
-      <button
-        onClick={handleCreateInvoice}
-        className="w-full py-3 bg-gradient-to-r from-orange-500 to-yellow-500 text-white font-semibold rounded-lg hover:opacity-90 transition-opacity mb-6"
-      >
-        Create invoice
-      </button>
-
-      {/* Курс обмена и комиссии */}
-      <div className="space-y-2 mb-6 text-sm">
-        <div className="flex justify-between">
-          <span className="text-gray-400">Exchange rate:</span>
-          <span className="text-white">
-            $1, {option.exchangeRate.toFixed(2)} {option.currency}
-          </span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-gray-400">Minimum amount:</span>
-          <span className="text-white">
-            {option.minAmount} {option.currency}
-          </span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-gray-400">
-            {option.networkFee ? 'Recharge fee:' : 'Fee:'}
-          </span>
-          <span className="text-white">
-            {option.fee}%
-          </span>
-        </div>
-        {option.networkFee !== undefined && (
-          <div className="flex justify-between">
-            <span className="text-gray-400">Network fee:</span>
-            <span className="text-white">
-              {option.networkFee} {option.currency}
-            </span>
-          </div>
-        )}
-      </div>
-
-      {/* Важные предупреждения */}
-      <div className="space-y-3 text-xs">
-        <div className="text-gray-400">
-          Destination addresses are single-use.
-        </div>
-
-        <div className="space-y-2">
-          <div className="text-red-400 font-semibold">
-            We do not provide refunds for crypto payments!
-          </div>
-          <div className="text-red-400">
-            Please keep the transaction fee in mind!
-          </div>
-          <div className="text-red-400">
-            Transaction amount should be larger than the required minimum payment;
-          </div>
-          <div className="text-red-400">
-            {option.networkFee !== undefined
-              ? 'Payment address active for limited time;'
-              : "Transaction's destination address is active for only 60 minutes;"}
-          </div>
-          <div className="text-red-400">
-            Send strictly the amount that you specified while creating an invoice on our website;
-          </div>
-          <div className="text-red-400">
-            Violation of any rule shall lead to loss of funds.
           </div>
         </div>
 
-        <div className="text-yellow-400">
-          Calculations are approximate. The sum of money you will get may slightly vary.
+        {/* Crypto Selection */}
+        <div className="mb-6">
+          <label className="block text-sm text-gray-300 mb-3">Выберите криптовалюту</label>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 max-h-64 overflow-y-auto">
+            {filteredCryptos.map((crypto) => (
+              <button
+                key={crypto.id}
+                onClick={() => setSelectedCrypto(crypto)}
+                disabled={!crypto.available}
+                className={`p-3 rounded-lg border transition-all text-left ${
+                  selectedCrypto?.id === crypto.id
+                    ? 'border-orange-500 bg-orange-500/10'
+                    : 'border-[#2a2a2a] bg-[#0a0a0a] hover:border-orange-500/50'
+                } ${!crypto.available ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-6 h-6 rounded-full bg-gray-700 flex items-center justify-center text-xs font-bold text-white">
+                    {crypto.icon}
+                  </div>
+                  <span className="text-xs text-gray-400">{crypto.symbol}</span>
+                </div>
+                <div className="text-sm text-gray-200 truncate">{crypto.name}</div>
+              </button>
+            ))}
+          </div>
+          {filteredCryptos.length === 0 && (
+            <div className="text-center py-8 text-gray-400">
+              Криптовалюты не найдены
+            </div>
+          )}
         </div>
 
-        <div className="text-gray-400">
-          We do AML checks for all payments to find out if they were made by customers that could
-          potentially be part of risk groups, which may involve cryptocurrency mixing/tumbling,
-          hacking, scamming or be connected with OFAC sanctions list, darkweb or terrorism-related
-          communities, etc. You risk losing all your funds if you send money as part of the
-          above-mentioned risk groups.
+        {/* Footer with Language and Continue Button */}
+        <div className="flex items-center justify-between pt-6 border-t border-[#2a2a2a]">
+          <div className="flex items-center gap-2">
+            <select className="px-3 py-2 bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg text-white text-sm focus:outline-none focus:border-orange-500">
+              <option value="ru">RU</option>
+              <option value="en">EN</option>
+            </select>
+          </div>
+          <button
+            onClick={handleContinue}
+            disabled={!email || !amount || !selectedCrypto}
+            className="px-8 py-3 bg-gradient-to-r from-orange-500 to-yellow-500 text-white font-semibold rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Продолжить
+          </button>
         </div>
-
-        <div className="text-gray-400">
-          If the money did not reach your balance within 12 hours, contact our support and provide
-          all the details regarding your payment.
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function InvoiceCreator() {
-  return (
-    <div className="space-y-6">
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold mb-2">Create Crypto Invoice</h2>
-        <p className="text-gray-400">
-          Choose a payment method and create an invoice to receive cryptocurrency payments
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {invoiceOptions.map((option) => (
-          <InvoiceCard key={option.id} option={option} />
-        ))}
       </div>
     </div>
   )
 }
 
 export default InvoiceCreator
-

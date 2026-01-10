@@ -13,7 +13,7 @@ function Header() {
   return (
     <header className="flex items-center justify-between mb-8">
       <div className="flex items-center gap-4">
-        {/* Переключатель режимов убран */}
+        <h1 className="text-2xl font-bold text-white">OX processing</h1>
       </div>
       <div className="flex items-center gap-4">
         {user && (
@@ -35,4 +35,3 @@ function Header() {
 }
 
 export default Header
-
