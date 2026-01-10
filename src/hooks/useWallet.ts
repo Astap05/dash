@@ -235,7 +235,7 @@ export function useWallet() {
 
       // Инициализируем WalletConnect провайдер
       const provider = await EthereumProvider.init({
-        projectId: '0cfcc186a4e8df46239712f9d087ce49', // Нужно заменить на реальный projectId из WalletConnect Cloud
+        projectId: '0cfcc186a4e8df46239712f9d087ce49', // Тестовый projectId для демонстрации
         showQrModal: true,
         chains: [1], // Ethereum mainnet
         optionalChains: [137, 56, 43114], // Polygon, BSC, Avalanche
@@ -251,16 +251,42 @@ export function useWallet() {
 
       walletConnectProviderRef.current = provider
 
-      // Подключаемся
-      await provider.connect()
-      console.log('WalletConnect connected')
+      // Подключаемся с ожиданием события connect
+      const connectPromise = new Promise<void>((resolve, reject) => {
+        provider.on('connect', () => {
+          console.log('WalletConnect connected event received')
+          resolve()
+        })
 
-      const accounts = provider.accounts
-      if (!accounts || accounts.length === 0) {
-        throw new Error('Аккаунты не получены от WalletConnect')
+        provider.on('disconnect', () => {
+          console.log('WalletConnect disconnect event received')
+          reject(new Error('WalletConnect disconnected during connection'))
+        })
+
+        // Начинаем подключение
+        provider.connect().catch(reject)
+      })
+
+      await connectPromise
+
+      console.log('WalletConnect connect promise resolved')
+      console.log('Provider session:', provider.session)
+
+      const session = provider.session
+      if (!session || !session.namespaces || !session.namespaces.eip155) {
+        throw new Error('WalletConnect session not established properly')
       }
 
-      const address = accounts[0]
+      const eip155Accounts = session.namespaces.eip155.accounts
+      console.log('EIP155 accounts:', eip155Accounts)
+
+      if (!eip155Accounts || eip155Accounts.length === 0) {
+        throw new Error('Аккаунты не получены от WalletConnect. Пожалуйста, убедитесь, что вы подтвердили подключение в приложении кошелька.')
+      }
+
+      // Парсим адрес из формата "eip155:1:0x..."
+      const address = eip155Accounts[0].split(':')[2]
+      console.log('Parsed address:', address)
       console.log('Address from WalletConnect:', address)
 
       const ethersProvider = new ethers.BrowserProvider(provider)
