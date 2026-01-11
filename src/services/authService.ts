@@ -3,7 +3,8 @@
 
 export interface User {
   id: string
-  email: string
+  nickname: string
+  email?: string
   walletAddress: string | null
   createdAt: string
 }
@@ -11,31 +12,64 @@ export interface User {
 const STORAGE_KEY = 'staking_dashboard_user'
 const STORAGE_SESSION_KEY = 'staking_dashboard_session'
 
-export function register(email: string, password: string): Promise<User> {
+// Простое хэширование PIN для демо (в продакшене использовать bcrypt)
+function hashPin(pin: string): string {
+  // Для демо используем простой хэш, в реальности - bcrypt или argon2
+  let hash = 0
+  for (let i = 0; i < pin.length; i++) {
+    const char = pin.charCodeAt(i)
+    hash = ((hash << 5) - hash) + char
+    hash = hash & hash // Convert to 32bit integer
+  }
+  return hash.toString()
+}
+
+// Валидация PIN: ровно 4 цифры
+function validatePin(pin: string): boolean {
+  return /^\d{4}$/.test(pin)
+}
+
+// Валидация nickname: 3-20 символов, буквы/цифры/подчеркивание
+function validateNickname(nickname: string): boolean {
+  return /^[a-zA-Z0-9_]{3,20}$/.test(nickname)
+}
+
+export function register(nickname: string, pin: string): Promise<User> {
   return new Promise((resolve, reject) => {
-    // Проверяем, не зарегистрирован ли уже этот email
+    // Валидация входных данных
+    if (!validateNickname(nickname)) {
+      reject(new Error('Никнейм должен содержать 3-20 символов (буквы, цифры, подчеркивание)'))
+      return
+    }
+
+    if (!validatePin(pin)) {
+      reject(new Error('PIN должен состоять ровно из 4 цифр'))
+      return
+    }
+
+    // Проверяем, не зарегистрирован ли уже этот nickname
     const existingUsers = getStoredUsers()
-    if (existingUsers.find((u) => u.email === email)) {
-      reject(new Error('Пользователь с таким email уже зарегистрирован'))
+    if (existingUsers.find((u: any) => u.nickname && u.nickname.toLowerCase() === nickname.toLowerCase())) {
+      reject(new Error('Пользователь с таким никнеймом уже зарегистрирован'))
       return
     }
 
     // Создаем нового пользователя
     const user: User = {
       id: generateId(),
-      email,
+      nickname,
       walletAddress: null,
       createdAt: new Date().toISOString(),
     }
 
-    // Сохраняем пароль (в продакшене НЕ ДЕЛАЙТЕ ТАК! Используйте хеширование на backend)
+    // Сохраняем хэшированный PIN
     const userData = {
       ...user,
-      password, // ВРЕМЕННО для демо, в продакшене удалить!
+      pinHash: hashPin(pin),
     }
 
     // Сохраняем пользователя
-    existingUsers.push(userData as any)
+    existingUsers.push(userData)
     localStorage.setItem(STORAGE_KEY, JSON.stringify(existingUsers))
 
     // Автоматически авторизуем
@@ -45,23 +79,34 @@ export function register(email: string, password: string): Promise<User> {
   })
 }
 
-export function login(email: string, password: string): Promise<User> {
+export function login(nickname: string, pin: string): Promise<User> {
   return new Promise((resolve, reject) => {
-    const users = getStoredUsers()
-    const user = users.find(
-      (u: any) => u.email === email && u.password === password
-    )
-
-    if (!user) {
-      reject(new Error('Неверный email или пароль'))
+    // Валидация входных данных
+    if (!validateNickname(nickname)) {
+      reject(new Error('Неверный формат никнейма'))
       return
     }
 
-    // Удаляем пароль из объекта перед возвратом
-    const { password: _, ...userWithoutPassword } = user
+    if (!validatePin(pin)) {
+      reject(new Error('PIN должен состоять из 4 цифр'))
+      return
+    }
+
+    const users = getStoredUsers()
+    const user = users.find(
+      (u: any) => u.nickname && u.nickname.toLowerCase() === nickname.toLowerCase() && u.pinHash === hashPin(pin)
+    )
+
+    if (!user) {
+      reject(new Error('Неверный никнейм или PIN'))
+      return
+    }
+
+    // Удаляем pinHash из объекта перед возвратом
+    const { pinHash: _, ...userWithoutPin } = user
     setSession(user.id)
 
-    resolve(userWithoutPassword as User)
+    resolve(userWithoutPin as User)
   })
 }
 
@@ -78,8 +123,8 @@ export function getCurrentUser(): User | null {
   const user = users.find((u: any) => u.id === sessionId)
   if (!user) return null
 
-  const { password: _, ...userWithoutPassword } = user
-  return userWithoutPassword as User
+  const { pinHash: _, ...userWithoutPin } = user
+  return userWithoutPin as User
 }
 
 export function isAuthenticated(): boolean {

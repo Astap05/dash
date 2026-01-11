@@ -47,7 +47,7 @@ interface InvoiceCreatorProps {
 
 function InvoiceCreator({ onCreateInvoice }: InvoiceCreatorProps) {
   const user = getCurrentUser()
-  const [email, setEmail] = useState(user?.email || '')
+  const [email, setEmail] = useState(user?.email || user?.nickname || '')
   const [amount, setAmount] = useState('')
   const [selectedNetwork, setSelectedNetwork] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')

@@ -10,8 +10,8 @@ interface AuthModalProps {
 
 function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
   const [isLogin, setIsLogin] = useState(true)
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [nickname, setNickname] = useState('')
+  const [pin, setPin] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -22,9 +22,9 @@ function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
 
     try {
       if (isLogin) {
-        await login(email, password)
+        await login(nickname, pin)
       } else {
-        await register(email, password)
+        await register(nickname, pin)
       }
       onSuccess()
       handleClose()
@@ -36,8 +36,8 @@ function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
   }
 
   const handleClose = () => {
-    setEmail('')
-    setPassword('')
+    setNickname('')
+    setPin('')
     setError(null)
     onClose()
   }
@@ -61,27 +61,29 @@ function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-2">Email</label>
+            <label className="block text-sm font-medium mb-2">Никнейм</label>
             <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              type="text"
+              value={nickname}
+              onChange={(e) => setNickname(e.target.value)}
               required
+              pattern="[a-zA-Z0-9_]{3,20}"
               className="w-full px-4 py-2 bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg focus:outline-none focus:border-orange-500"
-              placeholder="your@email.com"
+              placeholder="Ваш никнейм (3-20 символов)"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2">Пароль</label>
+            <label className="block text-sm font-medium mb-2">PIN-код</label>
             <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              type="text"
+              value={pin}
+              onChange={(e) => setPin(e.target.value)}
               required
-              minLength={6}
+              pattern="\d{4}"
+              maxLength={4}
               className="w-full px-4 py-2 bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg focus:outline-none focus:border-orange-500"
-              placeholder="Минимум 6 символов"
+              placeholder="4 цифры"
             />
           </div>
 

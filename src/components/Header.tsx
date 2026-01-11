@@ -18,7 +18,7 @@ function Header() {
       <div className="flex items-center gap-4">
         {user && (
           <div className="flex items-center gap-2 text-sm text-gray-400">
-            <span>{user.email}</span>
+            <span>{user.nickname}</span>
             <button
               onClick={handleLogout}
               className="flex items-center gap-1 px-3 py-1 text-gray-400 hover:text-white transition-colors"
