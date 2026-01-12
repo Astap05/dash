@@ -1,11 +1,13 @@
 import { useWalletContext } from '../contexts/WalletContext'
 import { LogOut, Wallet } from 'lucide-react'
+import { useLanguage } from '../contexts/LanguageContext'
 
 interface WalletButtonProps {
   variant?: 'header' | 'section'
 }
 
 function WalletButton({ variant = 'header' }: WalletButtonProps) {
+  const { t } = useLanguage()
   const { address, isConnected, isConnecting, balance, connectWallet, disconnectWallet } = useWalletContext()
 
   const formatAddress = (addr: string) => {
@@ -48,10 +50,10 @@ function WalletButton({ variant = 'header' }: WalletButtonProps) {
               ? 'bg-gradient-to-r from-orange-500 to-yellow-500 text-white hover:opacity-90'
               : 'bg-white text-orange-600 hover:bg-gray-100'
           }`}
-          title="Отключить кошелек"
+          title={t('disconnect')}
         >
           <LogOut className="w-4 h-4" />
-          <span className="hidden sm:inline">Disconnect</span>
+          <span className="hidden sm:inline">{t('disconnect')}</span>
         </button>
       </div>
     )
@@ -69,10 +71,10 @@ function WalletButton({ variant = 'header' }: WalletButtonProps) {
             ? 'bg-gradient-to-r from-orange-500 to-yellow-500 text-white hover:opacity-90'
             : 'bg-white text-orange-600 hover:bg-gray-100'
         }`}
-        title={`Подключить кошелек ${formatAddress(address)}`}
+        title={`${t('connect_wallet')} ${formatAddress(address)}`}
       >
         <Wallet className="w-4 h-4" />
-        {isConnecting ? 'Connecting...' : `CONNECT ${formatAddress(address)}`}
+        {isConnecting ? t('loading') : `${t('connect_wallet')} ${formatAddress(address)}`}
       </button>
     )
   }
@@ -90,7 +92,7 @@ function WalletButton({ variant = 'header' }: WalletButtonProps) {
       }`}
     >
       <Wallet className="w-4 h-4" />
-      {isConnecting ? 'Connecting...' : 'CONNECT WALLET'}
+      {isConnecting ? t('loading') : t('connect_wallet')}
     </button>
   )
 }

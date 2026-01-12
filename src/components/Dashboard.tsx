@@ -4,6 +4,7 @@ import InvoiceCreator from './InvoiceCreator'
 import InvoicePaymentPage from './InvoicePaymentPage'
 
 interface InvoiceData {
+  invoiceId?: string
   email: string
   amount: number
   currency: {
@@ -13,6 +14,10 @@ interface InvoiceData {
     network: string
     icon: string
   }
+  paymentAddress?: string
+  memo?: string
+  qrCode?: string
+  expiresAt?: string
 }
 
 function Dashboard() {

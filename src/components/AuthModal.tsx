@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
 import { register, login } from '../services/authService'
+import { useLanguage } from '../contexts/LanguageContext'
 
 interface AuthModalProps {
   isOpen: boolean
@@ -9,6 +10,7 @@ interface AuthModalProps {
 }
 
 function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
+  const { t } = useLanguage()
   const [isLogin, setIsLogin] = useState(true)
   const [nickname, setNickname] = useState('')
   const [pin, setPin] = useState('')
@@ -49,7 +51,7 @@ function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
       <div className="bg-[#1a1a1a] rounded-xl p-6 w-full max-w-md border border-[#2a2a2a]">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold">
-            {isLogin ? 'Вход' : 'Регистрация'}
+            {isLogin ? t('login') : t('register')}
           </h2>
           <button
             onClick={handleClose}
@@ -61,7 +63,7 @@ function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-2">Никнейм</label>
+            <label className="block text-sm font-medium mb-2">{t('nickname')}</label>
             <input
               type="text"
               value={nickname}
@@ -69,12 +71,12 @@ function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
               required
               pattern="[a-zA-Z0-9_]{3,20}"
               className="w-full px-4 py-2 bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg focus:outline-none focus:border-orange-500"
-              placeholder="Ваш никнейм (3-20 символов)"
+              placeholder={t('nickname_placeholder')}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2">PIN-код</label>
+            <label className="block text-sm font-medium mb-2">{t('pin')}</label>
             <input
               type="text"
               value={pin}
@@ -83,7 +85,7 @@ function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
               pattern="\d{4}"
               maxLength={4}
               className="w-full px-4 py-2 bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg focus:outline-none focus:border-orange-500"
-              placeholder="4 цифры"
+              placeholder={t('pin_placeholder')}
             />
           </div>
 
@@ -96,7 +98,7 @@ function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
             disabled={loading}
             className="w-full bg-gradient-to-r from-orange-500 to-yellow-500 text-white py-2 rounded-lg font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? 'Загрузка...' : isLogin ? 'Войти' : 'Зарегистрироваться'}
+            {loading ? t('loading') : isLogin ? t('login_button') : t('register_button')}
           </button>
         </form>
 
@@ -109,8 +111,8 @@ function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
             className="text-sm text-gray-400 hover:text-white transition-colors"
           >
             {isLogin
-              ? 'Нет аккаунта? Зарегистрироваться'
-              : 'Уже есть аккаунт? Войти'}
+              ? t('no_account')
+              : t('have_account')}
           </button>
         </div>
       </div>

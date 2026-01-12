@@ -2,9 +2,11 @@ import { useState, useEffect, useMemo } from 'react'
 import { Copy, Check, AlertCircle, Wallet, Waves } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useWalletContext } from '../contexts/WalletContext'
+import { useLanguage } from '../contexts/LanguageContext'
 
 interface InvoicePaymentPageProps {
   invoiceData: {
+    invoiceId?: string
     email: string
     amount: number
     currency: {
@@ -14,35 +16,40 @@ interface InvoicePaymentPageProps {
       network: string
       icon: string
     }
+    paymentAddress?: string
+    memo?: string
+    qrCode?: string
+    expiresAt?: string
   }
   onBack: () => void
 }
 
 function InvoicePaymentPage({ invoiceData, onBack }: InvoicePaymentPageProps) {
+  const { t } = useLanguage()
   // ДОБАВИЛИ isConnected и address СЮДА
   const { connectWallet, connectWalletConnect, isConnected, address, walletType } = useWalletContext()
-  
+
   const [copiedAmount, setCopiedAmount] = useState(false)
   const [copiedAddress, setCopiedAddress] = useState(false)
-  const [timeLeft, setTimeLeft] = useState(30 * 60) // 30 minutes in seconds
+  const [copiedMemo, setCopiedMemo] = useState(false)
+  const [timeLeft, setTimeLeft] = useState(() => {
+    if (invoiceData.expiresAt) {
+      const expires = new Date(invoiceData.expiresAt).getTime()
+      const now = Date.now()
+      return Math.max(0, Math.floor((expires - now) / 1000))
+    }
+    return 30 * 60 // 30 minutes default
+  })
 
-  // Generate a mock wallet address (in real app, this would come from backend)
-  const walletAddress = useMemo(() => {
-    // Generate a random Ethereum-style address
-    const chars = '0123456789abcdef'
-    return '0x' + Array.from({ length: 40 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
-  }, [])
+  // Use real data from invoice
+  const walletAddress = invoiceData.paymentAddress || '0x0000000000000000000000000000000000000000'
+  const qrCodeData = invoiceData.qrCode
 
   // Calculate crypto amount (simplified - in real app would use exchange rate)
   const cryptoAmount = useMemo(() => {
     // Placeholder calculation - would use actual exchange rate
     return (invoiceData.amount * 1.01).toFixed(4) // Add small fee
   }, [invoiceData.amount])
-
-  // QR Code data
-  const qrCodeData = useMemo(() => {
-    return `${walletAddress}?amount=${cryptoAmount}`
-  }, [walletAddress, cryptoAmount])
 
   // Timer countdown
   useEffect(() => {
@@ -87,6 +94,16 @@ function InvoicePaymentPage({ invoiceData, onBack }: InvoicePaymentPageProps) {
     }
   }
 
+  const handleCopyMemo = async () => {
+    try {
+      await navigator.clipboard.writeText(invoiceData.memo || '')
+      setCopiedMemo(true)
+      setTimeout(() => setCopiedMemo(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy memo:', err)
+    }
+  }
+
   const handleConnectMetaMask = async () => {
     if (!isConnected) {
        await connectWallet()
@@ -109,9 +126,9 @@ function InvoicePaymentPage({ invoiceData, onBack }: InvoicePaymentPageProps) {
       <div className="bg-[#1a1a1a] rounded-xl p-6 border border-[#2a2a2a]">
         {/* Header */}
         <div className="mb-6">
-          <h2 className="text-2xl font-bold mb-2">OX processing</h2>
+          <h2 className="text-2xl font-bold mb-2">{t('processing')}</h2>
           <h3 className="text-lg text-gray-300 mb-4">
-            Send {invoiceData.currency.symbol} to the wallet address by copying it or scan the following QR code:
+            {t('send_to_wallet')} {invoiceData.currency.symbol}
           </h3>
         </div>
 
@@ -121,7 +138,7 @@ function InvoicePaymentPage({ invoiceData, onBack }: InvoicePaymentPageProps) {
             {/* Step 1: Coin Ticker */}
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-sm text-gray-400">Step 1: Check coin ticker</span>
+                <span className="text-sm text-gray-400">{t('check_coin_ticker')}</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center text-green-400 font-bold text-sm">
@@ -134,7 +151,7 @@ function InvoicePaymentPage({ invoiceData, onBack }: InvoicePaymentPageProps) {
             {/* Step 2: Total Amount */}
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-sm text-gray-400">Step 2: Check the total in {invoiceData.currency.symbol}</span>
+                <span className="text-sm text-gray-400">{t('check_total')} {invoiceData.currency.symbol}</span>
               </div>
               <div className="flex items-center gap-3 p-3 bg-[#0a0a0a] rounded-lg border border-[#2a2a2a]">
                 <span className="text-white font-semibold text-lg">{cryptoAmount} {invoiceData.currency.symbol}</span>
@@ -155,7 +172,7 @@ function InvoicePaymentPage({ invoiceData, onBack }: InvoicePaymentPageProps) {
             {/* Step 3: Wallet Address */}
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-sm text-gray-400">Step 3: Send the above amount to this wallet address</span>
+                <span className="text-sm text-gray-400">{t('send_amount_to')}</span>
               </div>
               <div className="flex items-center gap-3 p-3 bg-[#0a0a0a] rounded-lg border border-[#2a2a2a]">
                 <span className="text-white font-mono text-sm break-all flex-1">{walletAddress}</span>
@@ -173,16 +190,40 @@ function InvoicePaymentPage({ invoiceData, onBack }: InvoicePaymentPageProps) {
               </div>
             </div>
 
+            {/* Step 4: Memo (for Solana) */}
+            {invoiceData.memo && (
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm text-gray-400">Memo (обязательно для Solana)</span>
+                </div>
+                <div className="flex items-center gap-3 p-3 bg-[#0a0a0a] rounded-lg border border-[#2a2a2a]">
+                  <span className="text-white font-mono text-sm break-all flex-1">{invoiceData.memo}</span>
+                  <button
+                    onClick={handleCopyMemo}
+                    className="p-2 hover:bg-[#2a2a2a] rounded-lg transition-colors flex-shrink-0"
+                    title="Copy memo"
+                  >
+                    {copiedMemo ? (
+                      <Check className="w-5 h-5 text-green-400" />
+                    ) : (
+                      <Copy className="w-5 h-5 text-gray-400 hover:text-white" />
+                    )}
+                  </button>
+                </div>
+                <p className="text-xs text-yellow-400 mt-1">
+                  ⚠️ Важно: Укажите этот memo при переводе в Trust Wallet или другом кошельке
+                </p>
+              </div>
+            )}
+
             {/* Warning Box */}
             <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-4">
               <div className="flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
                 <div className="text-sm text-red-300 space-y-2">
-                  <p className="font-semibold">Please take into account the commission for sending!</p>
+                  <p className="font-semibold">{t('commission_warning')}</p>
                   <p>
-                    The amount is specified without the commission of the service you are going to use for the transfer.
-                    OXprocessing must receive the exact amount specified in the payment form. If the amount received
-                    differs even by one digit, the payment can be credited only through the technical support service.
+                    {t('commission_text')}
                   </p>
                 </div>
               </div>
@@ -190,7 +231,7 @@ function InvoicePaymentPage({ invoiceData, onBack }: InvoicePaymentPageProps) {
 
             {/* Web3 Wallet Buttons */}
             <div>
-              <p className="text-sm text-gray-400 mb-3">Or pay with Web3 wallet</p>
+              <p className="text-sm text-gray-400 mb-3">{t('pay_with_web3')}</p>
               <div className="flex flex-col sm:flex-row gap-3">
                 
                 {/* MetaMask button */}
@@ -209,7 +250,7 @@ function InvoicePaymentPage({ invoiceData, onBack }: InvoicePaymentPageProps) {
                     className="flex items-center justify-center gap-2 px-6 py-3 bg-[#f6851b] hover:bg-[#e2761b] text-white font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Wallet className="w-5 h-5" />
-                    Connect MetaMask
+                    {t('connect_metamask')}
                   </button>
                 )}
 
@@ -229,7 +270,7 @@ function InvoicePaymentPage({ invoiceData, onBack }: InvoicePaymentPageProps) {
                     className="flex items-center justify-center gap-2 px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Waves className="w-5 h-5" />
-                    WalletConnect
+                    {t('walletconnect')}
                   </button>
                 )}
               </div>
@@ -239,10 +280,14 @@ function InvoicePaymentPage({ invoiceData, onBack }: InvoicePaymentPageProps) {
           {/* Right side - QR Code */}
           <div className="flex flex-col items-center justify-start">
             <div className="bg-white p-4 rounded-lg mb-4">
-              <QRCodeSVG value={qrCodeData} size={200} level="H" />
+              {qrCodeData ? (
+                <img src={qrCodeData} alt="QR Code" className="w-48 h-48" />
+              ) : (
+                <QRCodeSVG value={`ethereum:${walletAddress}?amount=${cryptoAmount}`} size={200} level="H" />
+              )}
             </div>
             <div className="text-center">
-              <p className="text-sm text-gray-400 mb-2">The address is valid for the specified period only:</p>
+              <p className="text-sm text-gray-400 mb-2">Адрес действителен только в указанный период:</p>
               <div className="text-2xl font-bold text-red-400 font-mono">{formatTime(timeLeft)}</div>
             </div>
           </div>
@@ -254,10 +299,9 @@ function InvoicePaymentPage({ invoiceData, onBack }: InvoicePaymentPageProps) {
             <div className="flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
               <div className="text-sm text-yellow-300">
-                <p className="font-semibold">Attention!</p>
+                <p className="font-semibold">{t('attention')}</p>
                 <p>
-                  After sending {invoiceData.currency.symbol} ({invoiceData.currency.network.toUpperCase()}),
-                  wait for 3 confirmation of the transaction, after which the funds will be credited to your account.
+                  {t('confirmation_text').replace('{symbol}', invoiceData.currency.symbol).replace('{network}', invoiceData.currency.network.toUpperCase())}
                 </p>
               </div>
             </div>
@@ -270,7 +314,7 @@ function InvoicePaymentPage({ invoiceData, onBack }: InvoicePaymentPageProps) {
             onClick={onBack}
             className="px-6 py-2 bg-[#2a2a2a] hover:bg-[#3a3a3a] text-white rounded-lg transition-colors"
           >
-            Назад
+            {t('back')}
           </button>
         </div>
       </div>

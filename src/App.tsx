@@ -1,14 +1,17 @@
 import Dashboard from './components/Dashboard'
 import { WalletProvider } from './contexts/WalletContext'
+import { LanguageProvider } from './contexts/LanguageContext'
 import AuthGuard from './components/AuthGuard'
 
 function App() {
   return (
-    <WalletProvider>
-      <AuthGuard>
-        <Dashboard />
-      </AuthGuard>
-    </WalletProvider>
+    <LanguageProvider>
+      <WalletProvider>
+        <AuthGuard>
+          <Dashboard />
+        </AuthGuard>
+      </WalletProvider>
+    </LanguageProvider>
   )
 }
 

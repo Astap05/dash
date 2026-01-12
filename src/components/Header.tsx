@@ -1,8 +1,10 @@
 import WalletButton from './WalletButton'
 import { logout, getCurrentUser } from '../services/authService'
 import { LogOut } from 'lucide-react'
+import { useLanguage } from '../contexts/LanguageContext'
 
 function Header() {
+  const { t } = useLanguage()
   const user = getCurrentUser()
 
   const handleLogout = () => {
@@ -22,7 +24,7 @@ function Header() {
             <button
               onClick={handleLogout}
               className="flex items-center gap-1 px-3 py-1 text-gray-400 hover:text-white transition-colors"
-              title="Выйти"
+              title={t('logout')}
             >
               <LogOut className="w-4 h-4" />
             </button>

@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
-import { Search, Info } from 'lucide-react'
+import { Info } from 'lucide-react'
 import { getCurrentUser } from '../services/authService'
+import { useLanguage } from '../contexts/LanguageContext'
 
 interface CryptoCurrency {
   id: string
@@ -39,18 +40,23 @@ const cryptocurrencies: CryptoCurrency[] = [
 
 interface InvoiceCreatorProps {
   onCreateInvoice: (invoiceData: {
+    invoiceId?: string
     email: string
     amount: number
     currency: CryptoCurrency
+    paymentAddress?: string
+    memo?: string
+    qrCode?: string
+    expiresAt?: string
   }) => void
 }
 
 function InvoiceCreator({ onCreateInvoice }: InvoiceCreatorProps) {
+  const { t, language, setLanguage } = useLanguage()
   const user = getCurrentUser()
   const [email, setEmail] = useState(user?.email || user?.nickname || '')
   const [amount, setAmount] = useState('')
   const [selectedNetwork, setSelectedNetwork] = useState('all')
-  const [searchQuery, setSearchQuery] = useState('')
   const [selectedCrypto, setSelectedCrypto] = useState<CryptoCurrency | null>(null)
 
   const filteredCryptos = useMemo(() => {
@@ -70,23 +76,12 @@ function InvoiceCreator({ onCreateInvoice }: InvoiceCreatorProps) {
       })
     }
 
-    // Filter by search query
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase()
-      filtered = filtered.filter(
-        (crypto) =>
-          crypto.name.toLowerCase().includes(query) ||
-          crypto.symbol.toLowerCase().includes(query) ||
-          crypto.network.toLowerCase().includes(query)
-      )
-    }
-
     return filtered
-  }, [selectedNetwork, searchQuery])
+  }, [selectedNetwork])
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     if (!email.trim()) {
-      alert('Пожалуйста, введите email')
+      alert('Пожалуйста, введите ник')
       return
     }
 
@@ -100,31 +95,63 @@ function InvoiceCreator({ onCreateInvoice }: InvoiceCreatorProps) {
       return
     }
 
-    onCreateInvoice({
-      email: email.trim(),
-      amount: parseFloat(amount),
-      currency: selectedCrypto,
-    })
+    try {
+      // Отправляем запрос на сервер
+      const response = await fetch('http://localhost:3001/api/invoices', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          nickname: email.trim(),
+          amount: parseFloat(amount),
+          currency: selectedCrypto.symbol,
+          network: selectedCrypto.network,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!result.success) {
+        alert('Ошибка создания счета: ' + result.error)
+        return
+      }
+
+      // Передаем данные счета родительскому компоненту
+      onCreateInvoice({
+        invoiceId: result.data.id,
+        email: email.trim(),
+        amount: parseFloat(amount),
+        currency: selectedCrypto,
+        paymentAddress: result.data.paymentAddress,
+        memo: result.data.memo,
+        qrCode: result.data.qrCode,
+        expiresAt: result.data.expiresAt,
+      })
+    } catch (error) {
+      console.error('Failed to create invoice:', error)
+      alert('Ошибка подключения к серверу')
+    }
   }
 
   return (
     <div className="max-w-4xl mx-auto">
       <div className="bg-[#1a1a1a] rounded-xl p-6 border border-[#2a2a2a]">
-        {/* Email Input */}
+        {/* Nickname Input */}
         <div className="mb-6">
-          <label className="block text-sm text-gray-300 mb-2">Введите свой email</label>
+          <label className="block text-sm text-gray-300 mb-2">{t('enter_nickname')}</label>
           <input
-            type="email"
+            type="text"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="m.igor.post@gmail.com"
+            placeholder={user?.nickname || t('nickname_placeholder')}
             className="w-full px-4 py-3 bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-orange-500 transition-colors"
           />
         </div>
 
         {/* Amount Input */}
         <div className="mb-6">
-          <label className="block text-sm text-gray-300 mb-2">Введите сумму</label>
+          <label className="block text-sm text-gray-300 mb-2">{t('enter_amount')}</label>
           <div className="relative">
             <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400">$</span>
             <input
@@ -142,7 +169,7 @@ function InvoiceCreator({ onCreateInvoice }: InvoiceCreatorProps) {
         {/* Network Selection */}
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-3">
-            <label className="block text-sm text-gray-300">Выберите сеть</label>
+            <label className="block text-sm text-gray-300">{t('select_network')}</label>
             <Info className="w-4 h-4 text-gray-400 cursor-help" />
           </div>
           <div className="flex flex-wrap gap-2">
@@ -165,26 +192,9 @@ function InvoiceCreator({ onCreateInvoice }: InvoiceCreatorProps) {
           </div>
         </div>
 
-        {/* Crypto Search */}
-        <div className="mb-6">
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value)
-                setSelectedCrypto(null) // Reset selection when search changes
-              }}
-              placeholder="USDT ARB1"
-              className="w-full pl-12 pr-4 py-3 bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-orange-500 transition-colors"
-            />
-          </div>
-        </div>
-
         {/* Crypto Selection */}
         <div className="mb-6">
-          <label className="block text-sm text-gray-300 mb-3">Выберите криптовалюту</label>
+          <label className="block text-sm text-gray-300 mb-3">{t('select_crypto')}</label>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 max-h-64 overflow-y-auto">
             {filteredCryptos.map((crypto) => (
               <button
@@ -209,7 +219,7 @@ function InvoiceCreator({ onCreateInvoice }: InvoiceCreatorProps) {
           </div>
           {filteredCryptos.length === 0 && (
             <div className="text-center py-8 text-gray-400">
-              Криптовалюты не найдены
+              {t('cryptos_not_found')}
             </div>
           )}
         </div>
@@ -217,7 +227,11 @@ function InvoiceCreator({ onCreateInvoice }: InvoiceCreatorProps) {
         {/* Footer with Language and Continue Button */}
         <div className="flex items-center justify-between pt-6 border-t border-[#2a2a2a]">
           <div className="flex items-center gap-2">
-            <select className="px-3 py-2 bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg text-white text-sm focus:outline-none focus:border-orange-500">
+            <select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value as 'ru' | 'en')}
+              className="px-3 py-2 bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg text-white text-sm focus:outline-none focus:border-orange-500"
+            >
               <option value="ru">RU</option>
               <option value="en">EN</option>
             </select>
@@ -227,7 +241,7 @@ function InvoiceCreator({ onCreateInvoice }: InvoiceCreatorProps) {
             disabled={!email || !amount || !selectedCrypto}
             className="px-8 py-3 bg-gradient-to-r from-orange-500 to-yellow-500 text-white font-semibold rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Продолжить
+            {t('continue')}
           </button>
         </div>
       </div>
