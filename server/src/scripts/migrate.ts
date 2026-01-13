@@ -66,6 +66,9 @@ const migrations = [
   // Add memo column for Solana payments
   `ALTER TABLE invoices ADD COLUMN memo TEXT`,
 
+  // Add wallets column for user wallet addresses
+  `ALTER TABLE users ADD COLUMN wallets TEXT DEFAULT '[]'`,
+
   // Indexes for performance
   `CREATE INDEX IF NOT EXISTS idx_invoices_user_id ON invoices(user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status)`,

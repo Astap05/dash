@@ -11,6 +11,7 @@ interface WalletContextType {
   connectWallet: () => Promise<void>
   connectWalletConnect: () => Promise<void>
   disconnectWallet: () => void
+  reconnectToWallet: (address: string) => Promise<void>
   isMetaMaskInstalled: boolean
 }
 

@@ -32,6 +32,7 @@ function InvoicePaymentPage({ invoiceData, onBack }: InvoicePaymentPageProps) {
   const [copiedAmount, setCopiedAmount] = useState(false)
   const [copiedAddress, setCopiedAddress] = useState(false)
   const [copiedMemo, setCopiedMemo] = useState(false)
+  const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [timeLeft, setTimeLeft] = useState(() => {
     if (invoiceData.expiresAt) {
       const expires = new Date(invoiceData.expiresAt).getTime()
@@ -40,6 +41,47 @@ function InvoicePaymentPage({ invoiceData, onBack }: InvoicePaymentPageProps) {
     }
     return 30 * 60 // 30 minutes default
   })
+
+  // Payment status checking
+  const [paymentStatus, setPaymentStatus] = useState<'pending' | 'paid' | 'expired' | 'error'>('pending')
+
+  const checkPaymentStatus = async () => {
+    if (!invoiceData.invoiceId) return
+
+    try {
+      const response = await fetch(`http://localhost:3001/api/invoices/${invoiceData.invoiceId}`)
+      const data = await response.json()
+
+      if (data.success) {
+        const newStatus = data.data.status
+        if (newStatus !== paymentStatus) {
+          setPaymentStatus(newStatus)
+
+          if (newStatus === 'paid') {
+            // Show success modal
+            setShowSuccessModal(true)
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error checking payment status:', error)
+      setPaymentStatus('error')
+    }
+  }
+
+  // Check payment status every 10 seconds (to avoid rate limiting)
+  useEffect(() => {
+    if (paymentStatus === 'paid') return // Stop checking if already paid
+
+    // Wait 2 seconds before first check, then check every 10 seconds
+    const timeout = setTimeout(() => {
+      checkPaymentStatus() // First check
+      const interval = setInterval(checkPaymentStatus, 10000) // Then every 10 seconds
+      return () => clearInterval(interval)
+    }, 2000)
+
+    return () => clearTimeout(timeout)
+  }, [invoiceData.invoiceId, paymentStatus])
 
   // Use real data from invoice
   const walletAddress = invoiceData.paymentAddress || '0x0000000000000000000000000000000000000000'
@@ -233,7 +275,7 @@ function InvoicePaymentPage({ invoiceData, onBack }: InvoicePaymentPageProps) {
             <div>
               <p className="text-sm text-gray-400 mb-3">{t('pay_with_web3')}</p>
               <div className="flex flex-col sm:flex-row gap-3">
-                
+
                 {/* MetaMask button */}
                 {walletType === 'metamask' && isConnected && address ? (
                   <button
@@ -283,7 +325,11 @@ function InvoicePaymentPage({ invoiceData, onBack }: InvoicePaymentPageProps) {
               {qrCodeData ? (
                 <img src={qrCodeData} alt="QR Code" className="w-48 h-48" />
               ) : (
-                <QRCodeSVG value={`ethereum:${walletAddress}?amount=${cryptoAmount}`} size={200} level="H" />
+                invoiceData.currency.network === 'solana' ? (
+                  <QRCodeSVG value={`solana:${walletAddress}?amount=${cryptoAmount}${invoiceData.memo ? `&memo=${invoiceData.memo}` : ''}`} size={200} level="H" />
+                ) : (
+                  <QRCodeSVG value={`ethereum:${walletAddress}?amount=${cryptoAmount}`} size={200} level="H" />
+                )
               )}
             </div>
             <div className="text-center">
@@ -318,6 +364,41 @@ function InvoicePaymentPage({ invoiceData, onBack }: InvoicePaymentPageProps) {
           </button>
         </div>
       </div>
+
+      {/* Success Modal */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-[#1a1a1a] rounded-xl p-8 border border-[#2a2a2a] max-w-md w-full mx-4">
+            <div className="text-center">
+              {/* Green Checkmark */}
+              <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Check className="w-8 h-8 text-white" />
+              </div>
+
+              {/* Success Message */}
+              <h3 className="text-2xl font-bold text-white mb-2">
+                🎉 Оплата успешна!
+              </h3>
+              <p className="text-gray-300 mb-6">
+                Спасибо за покупку. Ваша транзакция подтверждена.
+              </p>
+
+              {/* OK Button */}
+              <button
+                onClick={() => {
+                  // Clear stored invoice data
+                  localStorage.removeItem('currentInvoiceId')
+                  localStorage.removeItem('currentInvoiceData')
+                  window.location.href = '/'
+                }}
+                className="w-full px-6 py-3 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-lg transition-colors"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

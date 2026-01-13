@@ -107,8 +107,8 @@ export class InvoiceService {
         memo: row.memo,
         status: row.status,
         qrCode: row.qr_code,
-        expiresAt: row.expires_at.toISOString(),
-        createdAt: row.created_at.toISOString()
+        expiresAt: row.expires_at,
+        createdAt: row.created_at
       }
     } catch (error) {
       logger.error('Failed to get invoice:', error)
@@ -160,8 +160,8 @@ export class InvoiceService {
         memo: row.memo,
         status: row.status,
         qrCode: row.qr_code,
-        expiresAt: row.expires_at.toISOString(),
-        createdAt: row.created_at.toISOString()
+        expiresAt: row.expires_at,
+        createdAt: row.created_at
       }))
     } catch (error) {
       logger.error('Failed to get user invoices:', error)

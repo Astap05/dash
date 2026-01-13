@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { Info } from 'lucide-react'
 import { getCurrentUser } from '../services/authService'
 import { useLanguage } from '../contexts/LanguageContext'
+import AlertModal from './AlertModal'
 
 interface CryptoCurrency {
   id: string
@@ -30,6 +31,8 @@ const cryptocurrencies: CryptoCurrency[] = [
   { id: 'usdt-avaxc', symbol: 'USDT', name: 'T USDT AVAXC', network: 'avax', icon: 'T', available: true },
   { id: 'usdt-erc20', symbol: 'USDT', name: 'T USDT ERC20', network: 'ethereum', icon: 'T', available: true },
   { id: 'usdt-bep20', symbol: 'USDT', name: 'T USDT BEP20', network: 'bsc', icon: 'T', available: true },
+  // Native cryptocurrencies
+  { id: 'sol', symbol: 'SOL', name: 'SOL', network: 'solana', icon: 'SOL', available: true },
   // Other cryptocurrencies
   { id: 'btc', symbol: 'BTC', name: 'B BTC BITCOIN', network: 'bitcoin', icon: 'B', available: true },
   { id: 'dai-bep20', symbol: 'DAI', name: '# DAI BEP20', network: 'bsc', icon: '#', available: true },
@@ -58,6 +61,7 @@ function InvoiceCreator({ onCreateInvoice }: InvoiceCreatorProps) {
   const [amount, setAmount] = useState('')
   const [selectedNetwork, setSelectedNetwork] = useState('all')
   const [selectedCrypto, setSelectedCrypto] = useState<CryptoCurrency | null>(null)
+  const [alertMessage, setAlertMessage] = useState<string | null>(null)
 
   const filteredCryptos = useMemo(() => {
     let filtered = cryptocurrencies
@@ -81,17 +85,17 @@ function InvoiceCreator({ onCreateInvoice }: InvoiceCreatorProps) {
 
   const handleContinue = async () => {
     if (!email.trim()) {
-      alert('Пожалуйста, введите ник')
+      setAlertMessage('Пожалуйста, введите ник')
       return
     }
 
     if (!amount.trim() || parseFloat(amount) <= 0) {
-      alert('Пожалуйста, введите корректную сумму')
+      setAlertMessage('Пожалуйста, введите корректную сумму')
       return
     }
 
     if (!selectedCrypto) {
-      alert('Пожалуйста, выберите криптовалюту')
+      setAlertMessage('Пожалуйста, выберите криптовалюту')
       return
     }
 
@@ -113,7 +117,7 @@ function InvoiceCreator({ onCreateInvoice }: InvoiceCreatorProps) {
       const result = await response.json()
 
       if (!result.success) {
-        alert('Ошибка создания счета: ' + result.error)
+        setAlertMessage('Ошибка создания счета: ' + result.error)
         return
       }
 
@@ -130,7 +134,7 @@ function InvoiceCreator({ onCreateInvoice }: InvoiceCreatorProps) {
       })
     } catch (error) {
       console.error('Failed to create invoice:', error)
-      alert('Ошибка подключения к серверу')
+      setAlertMessage('Ошибка подключения к серверу')
     }
   }
 
@@ -245,6 +249,7 @@ function InvoiceCreator({ onCreateInvoice }: InvoiceCreatorProps) {
           </button>
         </div>
       </div>
+      {alertMessage && <AlertModal message={alertMessage} onClose={() => setAlertMessage(null)} />}
     </div>
   )
 }

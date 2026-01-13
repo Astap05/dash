@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { ethers } from 'ethers'
 import { EthereumProvider } from '@walletconnect/ethereum-provider'
-import { updateUserWallet } from '../services/authService'
+import { updateUserWallet, addWallet } from '../services/authService'
+import { useNotification } from '../contexts/NotificationContext'
 
 interface WalletState {
   address: string | null
@@ -13,6 +14,8 @@ interface WalletState {
 }
 
 export function useWallet() {
+  const { showAlert } = useNotification()
+
   const [wallet, setWallet] = useState<WalletState>({
     address: null,
     isConnected: false,
@@ -106,14 +109,14 @@ export function useWallet() {
     // Проверяем наличие MetaMask
     if (!checkWalletInstalled()) {
       console.log('MetaMask not found')
-      alert('MetaMask не найден!\n\nЭто приложение работает только с MetaMask.\n\nПожалуйста, установите MetaMask для продолжения.')
+      showAlert('MetaMask не найден!\n\nЭто приложение работает только с MetaMask.\n\nПожалуйста, установите MetaMask для продолжения.')
       window.open('https://metamask.io/download/', '_blank')
       return
     }
 
     // Дополнительная проверка перед подключением
     if (!window.ethereum || typeof window.ethereum.request !== 'function') {
-      alert('MetaMask не найден или не активен.\n\nПожалуйста, убедитесь, что MetaMask установлен и включен.')
+      showAlert('MetaMask не найден или не активен.\n\nПожалуйста, убедитесь, что MetaMask установлен и включен.')
       window.open('https://metamask.io/download/', '_blank')
       return
     }
@@ -204,22 +207,26 @@ export function useWallet() {
 
       // Сохраняем адрес в localStorage
       localStorage.setItem('walletAddress', address)
-      
+      localStorage.setItem('walletType', 'metamask')
+
       // Обновляем адрес кошелька в профиле пользователя
       updateUserWallet(address)
+
+      // Добавляем в список сохраненных кошельков
+      addWallet(address)
     } catch (error: any) {
       console.error('Error connecting wallet:', error)
       setWallet((prev) => ({ ...prev, isConnecting: false }))
       
       if (error.code === 4001) {
-        alert('Подключение кошелька было отклонено пользователем.')
+        showAlert('Подключение кошелька было отклонено пользователем.')
       } else if (error.message?.includes('MetaMask') || error.message?.includes('extension not found')) {
-        alert('MetaMask не найден или не активен.\n\nПожалуйста, установите MetaMask для работы с этим приложением.')
+        showAlert('MetaMask не найден или не активен.\n\nПожалуйста, установите MetaMask для работы с этим приложением.')
         window.open('https://metamask.io/download/', '_blank')
       } else {
         const errorMsg = error.message || error.toString() || 'Неизвестная ошибка'
         console.error('Full error:', error)
-        alert('Ошибка подключения кошелька: ' + errorMsg)
+        showAlert('Ошибка подключения кошелька: ' + errorMsg)
       }
     }
   }, [getBalance, checkWalletInstalled])
@@ -315,7 +322,11 @@ export function useWallet() {
 
       // Сохраняем адрес
       localStorage.setItem('walletAddress', address)
+      localStorage.setItem('walletType', 'walletconnect')
       updateUserWallet(address)
+
+      // Добавляем в список сохраненных кошельков
+      addWallet(address)
 
       // Слушаем события WalletConnect
       provider.on('accountsChanged', (accounts: string[]) => {
@@ -345,13 +356,124 @@ export function useWallet() {
       setWallet((prev) => ({ ...prev, isConnecting: false }))
 
       if (error.code === 4001) {
-        alert('Подключение через WalletConnect было отклонено.')
+        showAlert('Подключение через WalletConnect было отклонено.')
       } else {
         const errorMsg = error.message || error.toString() || 'Неизвестная ошибка'
-        alert('Ошибка подключения через WalletConnect: ' + errorMsg)
+        showAlert('Ошибка подключения через WalletConnect: ' + errorMsg)
       }
     }
   }, [getBalance])
+
+  // Переключение на сохраненный кошелек
+  const reconnectToWallet = useCallback(async (targetAddress: string) => {
+    try {
+      setWallet((prev) => ({ ...prev, isConnecting: true }))
+
+      // Проверяем тип кошелька по сохраненному адресу или логике
+      // Для простоты, пробуем MetaMask сначала
+      let success = false
+
+      if (checkWalletInstalled()) {
+        try {
+          let ethereumProvider = window.ethereum
+          if (Array.isArray(window.ethereum.providers)) {
+            const metaMaskProvider = window.ethereum.providers.find((p: any) => p.isMetaMask === true)
+            if (metaMaskProvider) {
+              ethereumProvider = metaMaskProvider
+            }
+          }
+
+          const accounts = await ethereumProvider.request({ method: 'eth_accounts' })
+          if (accounts && accounts.length > 0) {
+            const currentAddress = accounts[0].toLowerCase()
+            if (currentAddress === targetAddress.toLowerCase()) {
+              // Адрес совпадает, подключаем MetaMask
+              const provider = new ethers.BrowserProvider(ethereumProvider)
+
+              let network
+              let balance
+
+              try {
+                network = await provider.getNetwork()
+                balance = await getBalance(currentAddress)
+              } catch (error: any) {
+                console.warn('Error getting network/balance:', error.message)
+                network = { chainId: BigInt(1) }
+                balance = null
+              }
+
+              setWallet({
+                address: currentAddress,
+                isConnected: true,
+                isConnecting: false,
+                balance,
+                chainId: Number(network.chainId),
+                walletType: 'metamask',
+              })
+
+              localStorage.setItem('walletAddress', currentAddress)
+              updateUserWallet(currentAddress)
+              success = true
+            }
+          }
+        } catch (error) {
+          console.warn('MetaMask reconnect failed:', error)
+        }
+      }
+
+      // Если не MetaMask, пробуем WalletConnect
+      if (!success && walletConnectProviderRef.current) {
+        try {
+          const provider = walletConnectProviderRef.current
+          const session = provider.session
+          if (session && session.namespaces && session.namespaces.eip155) {
+            const eip155Accounts = session.namespaces.eip155.accounts
+            const parsedAddress = eip155Accounts[0].split(':')[2].toLowerCase()
+            if (parsedAddress === targetAddress.toLowerCase()) {
+              // Адрес совпадает, подключаем WalletConnect
+              const ethersProvider = new ethers.BrowserProvider(provider)
+
+              let network
+              let balance
+
+              try {
+                network = await ethersProvider.getNetwork()
+                balance = await getBalance(parsedAddress, provider)
+              } catch (error: any) {
+                console.warn('Error getting network/balance:', error.message)
+                network = { chainId: BigInt(1) }
+                balance = null
+              }
+
+              setWallet({
+                address: parsedAddress,
+                isConnected: true,
+                isConnecting: false,
+                balance,
+                chainId: Number(network.chainId),
+                walletType: 'walletconnect',
+              })
+
+              localStorage.setItem('walletAddress', parsedAddress)
+              updateUserWallet(parsedAddress)
+              success = true
+            }
+          }
+        } catch (error) {
+          console.warn('WalletConnect reconnect failed:', error)
+        }
+      }
+
+      if (!success) {
+        throw new Error(`Переключитесь на адрес ${targetAddress.slice(0, 6)}...${targetAddress.slice(-4)} в соответствующем кошельке и попробуйте снова.`)
+      }
+
+    } catch (error: any) {
+      console.error('Error reconnecting wallet:', error)
+      setWallet((prev) => ({ ...prev, isConnecting: false }))
+      showAlert(error.message || 'Ошибка переподключения кошелька')
+    }
+  }, [checkWalletInstalled, getBalance])
 
   // Отключение кошелька
   const disconnectWallet = useCallback(() => {
@@ -374,15 +496,99 @@ export function useWallet() {
       walletType: null,
     })
     localStorage.removeItem('walletAddress')
+    localStorage.removeItem('walletType')
     updateUserWallet(null)
   }, [])
 
   // Проверка подключения при загрузке
   useEffect(() => {
-    // НЕ подключаемся автоматически при загрузке
-    // НЕ показываем сохраненный адрес - пользователь должен явно подключиться
-    // Это обеспечивает безопасность - кошелек не подключается без явного разрешения
-    console.log('Page loaded - wallet not auto-connected, user must click CONNECT WALLET')
+    const savedAddress = localStorage.getItem('walletAddress')
+    const savedType = localStorage.getItem('walletType')
+
+    if (savedAddress && savedType === 'walletconnect') {
+      // Для WalletConnect, инициализируем provider и проверяем session
+      (async () => {
+        try {
+          const provider = await EthereumProvider.init({
+            projectId: '0cfcc186a4e8df46239712f9d087ce49',
+            showQrModal: false, // Не показывать QR при reconnect
+            chains: [1],
+            optionalChains: [137, 56, 43114],
+            methods: ['eth_sendTransaction', 'personal_sign', 'eth_signTypedData'],
+            events: ['chainChanged', 'accountsChanged'],
+            metadata: {
+              name: 'Staking Dashboard',
+              description: 'Crypto staking platform',
+              url: window.location.origin,
+              icons: [`${window.location.origin}/icon.png`],
+            },
+          })
+
+          if (provider.session) {
+            const session = provider.session
+            if (session.namespaces && session.namespaces.eip155) {
+              const eip155Accounts = session.namespaces.eip155.accounts
+              const parsedAddress = eip155Accounts[0].split(':')[2].toLowerCase()
+              if (parsedAddress === savedAddress.toLowerCase()) {
+                walletConnectProviderRef.current = provider
+
+                const ethersProvider = new ethers.BrowserProvider(provider)
+                let network
+                let balance
+
+                try {
+                  network = await ethersProvider.getNetwork()
+                  balance = await getBalance(parsedAddress, provider)
+                } catch (error: any) {
+                  console.warn('Error getting network/balance:', error.message)
+                  network = { chainId: BigInt(1) }
+                  balance = null
+                }
+
+                setWallet({
+                  address: parsedAddress,
+                  isConnected: true,
+                  isConnecting: false,
+                  balance,
+                  chainId: Number(network.chainId),
+                  walletType: 'walletconnect',
+                })
+
+                // Слушаем события
+                provider.on('accountsChanged', (accounts: string[]) => {
+                  if (accounts.length === 0) {
+                    disconnectWallet()
+                  } else {
+                    const newAddress = accounts[0]
+                    setWallet((prev) => ({ ...prev, address: newAddress }))
+                    localStorage.setItem('walletAddress', newAddress)
+                    updateUserWallet(newAddress)
+                  }
+                })
+
+                provider.on('chainChanged', () => {
+                  window.location.reload()
+                })
+
+                provider.on('disconnect', () => {
+                  console.log('WalletConnect disconnected')
+                  disconnectWallet()
+                })
+              }
+            }
+          }
+        } catch (error) {
+          console.warn('WalletConnect reconnect failed:', error)
+        }
+      })()
+    } else if (savedAddress) {
+      // Для MetaMask или других, пытаемся reconnect
+      reconnectToWallet(savedAddress).catch(() => {
+        // Игнорируем ошибки, пользователь подключит вручную
+      })
+    }
+
+    console.log('Page loaded - attempting to reconnect saved wallet')
 
     // Сбрасываем флаг начальной загрузки
     isInitialLoadRef.current = true
@@ -470,6 +676,7 @@ export function useWallet() {
     connectWallet,
     connectWalletConnect,
     disconnectWallet,
+    reconnectToWallet,
     isMetaMaskInstalled: checkWalletInstalled(),
   }
 }

@@ -9,6 +9,7 @@ import { createServer } from 'http'
 import authRoutes from './routes/auth'
 import invoiceRoutes from './routes/invoices'
 import walletRoutes from './routes/wallet'
+import userRoutes from './routes/user'
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler'
@@ -55,6 +56,7 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authLimiter, authRoutes)
 app.use('/api/invoices', invoiceCreationLimiter, invoiceRoutes)
 app.use('/api/wallet', walletLimiter, walletRoutes)
+app.use('/api/user', walletLimiter, userRoutes)
 
 // Error handling (must be last)
 app.use(errorHandler)
@@ -65,8 +67,10 @@ app.use('*', (req, res) => {
 })
 
 server.listen(PORT, () => {
+  const networkMode = process.env.USE_TESTNET === 'true' ? 'TESTNET' : 'MAINNET'
   logger.info(`🚀 OX Processing Backend running on port ${PORT}`)
   logger.info(`📝 Environment: ${process.env.NODE_ENV}`)
+  logger.info(`🌐 Network Mode: ${networkMode}`)
 })
 
 // Graceful shutdown

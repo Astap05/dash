@@ -23,12 +23,13 @@ export const generalLimiter = rateLimit({
 })
 
 // Stricter limiter for invoice creation
+const isDevelopment = process.env.NODE_ENV !== 'production'
 export const invoiceCreationLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10, // limit each IP to 10 invoice creations per hour
+  windowMs: isDevelopment ? 60 * 1000 : 60 * 60 * 1000, // 1 minute in dev, 1 hour in prod
+  max: isDevelopment ? 50 : 10, // 50 in dev, 10 in prod per window
   message: {
     success: false,
-    error: 'Too many invoices created. Please try again later.'
+    error: isDevelopment ? 'Too many invoices created. Please wait a minute.' : 'Too many invoices created. Please try again later.'
   },
   standardHeaders: true,
   legacyHeaders: false,
@@ -36,7 +37,7 @@ export const invoiceCreationLimiter = rateLimit({
     logger.warn(`Invoice creation rate limit exceeded for IP: ${req.ip}`)
     res.status(429).json({
       success: false,
-      error: 'Invoice creation limit exceeded. Please try again in an hour.'
+      error: isDevelopment ? 'Invoice creation limit exceeded. Please wait a minute.' : 'Invoice creation limit exceeded. Please try again in an hour.'
     })
   }
 })

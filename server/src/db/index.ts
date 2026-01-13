@@ -9,7 +9,7 @@ if (!fs.existsSync(dbDir)) {
   fs.mkdirSync(dbDir, { recursive: true })
 }
 
-const db = new Database(dbPath)
+const db: Database.Database = new Database(dbPath)
 
 // Enable WAL mode for better performance
 db.pragma('journal_mode = WAL')
@@ -23,7 +23,7 @@ function convertSql(sql: string, params?: any[]): { sql: string, params: any[] }
     return { sql, params: [] }
   }
 
-  const convertedParams = []
+  const convertedParams: any[] = []
   let paramIndex = 1
   let convertedSql = sql.replace(/\$(\d+)/g, (match, num) => {
     const index = parseInt(num)

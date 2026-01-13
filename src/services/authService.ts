@@ -143,6 +143,48 @@ export function updateUserWallet(address: string | null): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(users))
 }
 
+export async function getWallets(): Promise<string[]> {
+  try {
+    const response = await fetch('http://localhost:3001/api/user/wallets')
+    const result = await response.json()
+    if (result.success) {
+      return result.data.wallets
+    }
+    return []
+  } catch (error) {
+    console.error('Failed to get wallets:', error)
+    return []
+  }
+}
+
+export async function addWallet(address: string): Promise<boolean> {
+  try {
+    const response = await fetch('http://localhost:3001/api/user/wallets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address })
+    })
+    const result = await response.json()
+    return result.success
+  } catch (error) {
+    console.error('Failed to add wallet:', error)
+    return false
+  }
+}
+
+export async function removeWallet(address: string): Promise<boolean> {
+  try {
+    const response = await fetch(`http://localhost:3001/api/user/wallets/${address}`, {
+      method: 'DELETE'
+    })
+    const result = await response.json()
+    return result.success
+  } catch (error) {
+    console.error('Failed to remove wallet:', error)
+    return false
+  }
+}
+
 function getStoredUsers(): any[] {
   try {
     const stored = localStorage.getItem(STORAGE_KEY)

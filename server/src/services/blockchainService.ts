@@ -38,7 +38,8 @@ export class BlockchainService {
           const connection = new Connection(config.rpcUrl, 'confirmed')
           this.providers.set(config.id, connection)
         }
-        logger.info(`Initialized provider for ${config.name}`)
+        const networkMode = process.env.USE_TESTNET === 'true' ? 'TESTNET' : 'MAINNET'
+        logger.info(`Initialized provider for ${config.name} (${networkMode})`)
       } catch (error) {
         logger.error(`Failed to initialize provider for ${config.name}:`, error)
       }

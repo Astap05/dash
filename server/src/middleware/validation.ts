@@ -28,10 +28,10 @@ export const invoiceCreationSchema = Joi.object({
     }),
 
   currency: Joi.string()
-    .valid('ETH', 'USDT', 'BTC', 'USDC')
+    .valid('ETH', 'USDT', 'BTC', 'USDC', 'SOL')
     .required()
     .messages({
-      'any.only': 'Currency must be one of: ETH, USDT, BTC, USDC',
+      'any.only': 'Currency must be one of: ETH, USDT, BTC, USDC, SOL',
       'any.required': 'Currency is required'
     }),
 

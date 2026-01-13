@@ -32,15 +32,24 @@ export interface PaymentNetwork {
   blockchains: BlockchainConfig[]
 }
 
+// Environment-based configuration - function to avoid import-time evaluation
+function isTestnetMode(): boolean {
+  return process.env.USE_TESTNET === 'true'
+}
+
 // Supported blockchain configurations
 export const BLOCKCHAIN_CONFIGS: Record<string, BlockchainConfig> = {
   ethereum: {
     id: 'ethereum',
     name: 'Ethereum',
     symbol: 'ETH',
-    rpcUrl: 'https://mainnet.infura.io/v3/${INFURA_PROJECT_ID}',
-    chainId: 1,
-    blockExplorer: 'https://etherscan.io',
+    rpcUrl: isTestnetMode()
+      ? 'https://sepolia.infura.io/v3/${INFURA_PROJECT_ID}'
+      : 'https://mainnet.infura.io/v3/${INFURA_PROJECT_ID}',
+    chainId: isTestnetMode() ? 11155111 : 1,
+    blockExplorer: isTestnetMode()
+      ? 'https://sepolia.etherscan.io'
+      : 'https://etherscan.io',
     nativeCurrency: {
       name: 'Ether',
       symbol: 'ETH',
@@ -94,9 +103,13 @@ export const BLOCKCHAIN_CONFIGS: Record<string, BlockchainConfig> = {
     id: 'solana',
     name: 'Solana',
     symbol: 'SOL',
-    rpcUrl: 'https://api.mainnet-beta.solana.com',
+    rpcUrl: isTestnetMode()
+      ? 'https://api.devnet.solana.com'
+      : 'https://api.mainnet-beta.solana.com',
     chainId: 0, // Solana doesn't use chainId
-    blockExplorer: 'https://solscan.io',
+    blockExplorer: isTestnetMode()
+      ? 'https://solscan.io/?cluster=devnet'
+      : 'https://solscan.io',
     nativeCurrency: {
       name: 'Solana',
       symbol: 'SOL',

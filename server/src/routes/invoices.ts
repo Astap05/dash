@@ -46,11 +46,15 @@ router.post('/', sanitizeInput, validateBody(invoiceCreationSchema), async (req,
 
     // Generate QR code
     const blockchainConfig = getBlockchainConfig(invoice.network)
-    let qrData = `${blockchainConfig?.id || 'ethereum'}:${invoice.paymentAddress}?amount=${invoice.amount}`
+    let qrData = ''
 
-    // Add memo for Solana
-    if (invoice.network === 'solana' && invoice.memo) {
-      qrData += `&memo=${encodeURIComponent(invoice.memo)}`
+    if (invoice.network === 'solana') {
+      qrData = `solana:${invoice.paymentAddress}?amount=${invoice.amount}`
+      if (invoice.memo) {
+        qrData += `&memo=${encodeURIComponent(invoice.memo)}`
+      }
+    } else {
+      qrData = `${blockchainConfig?.id || 'ethereum'}:${invoice.paymentAddress}?amount=${invoice.amount}`
     }
 
     const qrCodeDataURL = await QRCode.toDataURL(qrData)
@@ -95,11 +99,15 @@ router.get('/:id', async (req, res) => {
     // Generate QR code if not exists
     if (!invoice.qrCode) {
       const blockchainConfig = getBlockchainConfig(invoice.network)
-      let qrData = `${blockchainConfig?.id || 'ethereum'}:${invoice.paymentAddress}?amount=${invoice.amount}`
+      let qrData = ''
 
-      // Add memo for Solana
-      if (invoice.network === 'solana' && invoice.memo) {
-        qrData += `&memo=${encodeURIComponent(invoice.memo)}`
+      if (invoice.network === 'solana') {
+        qrData = `solana:${invoice.paymentAddress}?amount=${invoice.amount}`
+        if (invoice.memo) {
+          qrData += `&memo=${encodeURIComponent(invoice.memo)}`
+        }
+      } else {
+        qrData = `${blockchainConfig?.id || 'ethereum'}:${invoice.paymentAddress}?amount=${invoice.amount}`
       }
 
       invoice.qrCode = await QRCode.toDataURL(qrData)
