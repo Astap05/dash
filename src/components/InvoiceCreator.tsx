@@ -3,6 +3,7 @@ import { Info } from 'lucide-react'
 import { getCurrentUser } from '../services/authService'
 import { useLanguage } from '../contexts/LanguageContext'
 import AlertModal from './AlertModal'
+import CryptoIcon from './CryptoIcon'
 
 interface CryptoCurrency {
   id: string
@@ -15,30 +16,135 @@ interface CryptoCurrency {
 
 const networks = [
   { id: 'all', name: 'ALL', label: 'ALL' },
-  { id: 'polygon', name: 'Polygon', label: 'Polygon (POLYGON)' },
-  { id: 'solana', name: 'Solana', label: 'Solana (SOL)' },
   { id: 'ethereum', name: 'Ethereum', label: 'Ethereum (ERC20)' },
   { id: 'bsc', name: 'BNB Chain', label: 'BNB Chain (BEP20)' },
-  { id: 'avax', name: 'AVAX C-Chain', label: 'AVAX C-C' },
+  { id: 'polygon', name: 'Polygon', label: 'Polygon (POLYGON)' },
+  { id: 'solana', name: 'Solana', label: 'Solana (SOL)' },
+  { id: 'arbitrum', name: 'Arbitrum', label: 'Arbitrum (ARB1)' },
+  { id: 'avax', name: 'AVAX C-Chain', label: 'AVAX C-Chain' },
+  { id: 'tron', name: 'TRON', label: 'TRON (TRC20)' },
+  { id: 'bitcoin', name: 'Bitcoin', label: 'Bitcoin' },
+  { id: 'ripple', name: 'Ripple', label: 'Ripple (XRP)' },
+  { id: 'dogecoin', name: 'Dogecoin', label: 'Dogecoin' },
+  { id: 'cardano', name: 'Cardano', label: 'Cardano' },
+  { id: 'monero', name: 'Monero', label: 'Monero' },
+  { id: 'bitcoincash', name: 'Bitcoin Cash', label: 'Bitcoin Cash' },
+  { id: 'stellar', name: 'Stellar', label: 'Stellar' },
+  { id: 'zcash', name: 'Zcash', label: 'Zcash' },
+  { id: 'sui', name: 'Sui', label: 'Sui' },
 ]
 
 const cryptocurrencies: CryptoCurrency[] = [
-  // USDT variants
-  { id: 'usdt-arb1', symbol: 'USDT', name: 'T USDT ARB1', network: 'arbitrum', icon: 'T', available: true },
-  { id: 'usdt-trc20', symbol: 'USDT', name: 'T USDT TRC20', network: 'tron', icon: 'T', available: true },
-  { id: 'usdt-sol', symbol: 'USDT', name: 'T USDT SOL', network: 'solana', icon: 'T', available: true },
-  { id: 'usdt-polygon', symbol: 'USDT', name: 'T USDT POLYGON', network: 'polygon', icon: 'T', available: true },
-  { id: 'usdt-avaxc', symbol: 'USDT', name: 'T USDT AVAXC', network: 'avax', icon: 'T', available: true },
-  { id: 'usdt-erc20', symbol: 'USDT', name: 'T USDT ERC20', network: 'ethereum', icon: 'T', available: true },
-  { id: 'usdt-bep20', symbol: 'USDT', name: 'T USDT BEP20', network: 'bsc', icon: 'T', available: true },
-  // Native cryptocurrencies
-  { id: 'sol', symbol: 'SOL', name: 'SOL', network: 'solana', icon: 'SOL', available: true },
-  // Other cryptocurrencies
-  { id: 'btc', symbol: 'BTC', name: 'B BTC BITCOIN', network: 'bitcoin', icon: 'B', available: true },
-  { id: 'dai-bep20', symbol: 'DAI', name: '# DAI BEP20', network: 'bsc', icon: '#', available: true },
-  { id: 'dai-arb1', symbol: 'DAI', name: 'DAI ARB1', network: 'arbitrum', icon: 'DAI', available: true },
-  { id: 'dai-erc20', symbol: 'DAI', name: 'DAI ERC20', network: 'ethereum', icon: 'DAI', available: true },
-  { id: 'axs-erc20', symbol: 'AXS', name: 'AXS ERC20', network: 'ethereum', icon: 'AXS', available: true },
+  // 1. Bitcoin (BTC)
+  { id: 'btc', symbol: 'BTC', name: 'Bitcoin BTC', network: 'bitcoin', icon: '₿', available: true },
+
+  // 2. Ethereum (ETH)
+  { id: 'eth', symbol: 'ETH', name: 'Ethereum ETH', network: 'ethereum', icon: 'Ξ', available: true },
+
+  // 3. Tether (USDT) - Multiple networks
+  { id: 'usdt-erc20', symbol: 'USDT', name: 'Tether USDT ERC20', network: 'ethereum', icon: '₮', available: true },
+  { id: 'usdt-bep20', symbol: 'USDT', name: 'Tether USDT BEP20', network: 'bsc', icon: '₮', available: true },
+  { id: 'usdt-trc20', symbol: 'USDT', name: 'Tether USDT TRC20', network: 'tron', icon: '₮', available: true },
+  { id: 'usdt-polygon', symbol: 'USDT', name: 'Tether USDT POLYGON', network: 'polygon', icon: '₮', available: true },
+  { id: 'usdt-sol', symbol: 'USDT', name: 'Tether USDT SOL', network: 'solana', icon: '₮', available: true },
+  { id: 'usdt-arb1', symbol: 'USDT', name: 'Tether USDT ARB1', network: 'arbitrum', icon: '₮', available: true },
+  { id: 'usdt-avaxc', symbol: 'USDT', name: 'Tether USDT AVAXC', network: 'avax', icon: '₮', available: true },
+
+  // 4. BNB
+  { id: 'bnb', symbol: 'BNB', name: 'BNB', network: 'bsc', icon: 'B', available: true },
+
+  // 5. XRP
+  { id: 'xrp', symbol: 'XRP', name: 'XRP', network: 'ripple', icon: 'X', available: true },
+
+  // 6. Solana (SOL)
+  { id: 'sol', symbol: 'SOL', name: 'Solana SOL', network: 'solana', icon: 'S', available: true },
+
+  // 7. USDC - Multiple networks
+  { id: 'usdc-erc20', symbol: 'USDC', name: 'USDC ERC20', network: 'ethereum', icon: 'U', available: true },
+  { id: 'usdc-bep20', symbol: 'USDC', name: 'USDC BEP20', network: 'bsc', icon: 'U', available: true },
+  { id: 'usdc-polygon', symbol: 'USDC', name: 'USDC POLYGON', network: 'polygon', icon: 'U', available: true },
+  { id: 'usdc-sol', symbol: 'USDC', name: 'USDC SOL', network: 'solana', icon: 'U', available: true },
+  { id: 'usdc-arb1', symbol: 'USDC', name: 'USDC ARB1', network: 'arbitrum', icon: 'U', available: true },
+  { id: 'usdc-avaxc', symbol: 'USDC', name: 'USDC AVAXC', network: 'avax', icon: 'U', available: true },
+
+  // 8. TRON (TRX)
+  { id: 'trx', symbol: 'TRX', name: 'TRON TRX', network: 'tron', icon: 'T', available: true },
+
+  // 9. Lido Staked Ether (STETH)
+  { id: 'steth', symbol: 'STETH', name: 'Lido Staked Ether STETH', network: 'ethereum', icon: 'L', available: true },
+
+  // 10. Dogecoin (DOGE)
+  { id: 'doge', symbol: 'DOGE', name: 'Dogecoin DOGE', network: 'dogecoin', icon: 'Ð', available: true },
+
+  // 11. Figure Heloc (FIGR_HELOC)
+  { id: 'figr-heloc', symbol: 'FIGR_HELOC', name: 'Figure Heloc FIGR_HELOC', network: 'ethereum', icon: 'F', available: true },
+
+  // 12. Cardano (ADA)
+  { id: 'ada', symbol: 'ADA', name: 'Cardano ADA', network: 'cardano', icon: 'A', available: true },
+
+  // 13. Wrapped stETH (WSTETH)
+  { id: 'wsteth', symbol: 'WSTETH', name: 'Wrapped stETH WSTETH', network: 'ethereum', icon: 'W', available: true },
+
+  // 14. Monero (XMR)
+  { id: 'xmr', symbol: 'XMR', name: 'Monero XMR', network: 'monero', icon: 'M', available: true },
+
+  // 15. WhiteBIT Coin (WBT)
+  { id: 'wbt', symbol: 'WBT', name: 'WhiteBIT Coin WBT', network: 'ethereum', icon: 'W', available: true },
+
+  // 16. Wrapped Beacon ETH (WBETH)
+  { id: 'wbeth', symbol: 'WBETH', name: 'Wrapped Beacon ETH WBETH', network: 'ethereum', icon: 'W', available: true },
+
+  // 17. Wrapped Bitcoin (WBTC)
+  { id: 'wbtc-erc20', symbol: 'WBTC', name: 'Wrapped Bitcoin WBTC ERC20', network: 'ethereum', icon: 'W', available: true },
+  { id: 'wbtc-bep20', symbol: 'WBTC', name: 'Wrapped Bitcoin WBTC BEP20', network: 'bsc', icon: 'W', available: true },
+
+  // 18. Bitcoin Cash (BCH)
+  { id: 'bch', symbol: 'BCH', name: 'Bitcoin Cash BCH', network: 'bitcoincash', icon: 'B', available: true },
+
+  // 19. Wrapped eETH (WEETH)
+  { id: 'weeth', symbol: 'WEETH', name: 'Wrapped eETH WEETH', network: 'ethereum', icon: 'W', available: true },
+
+  // 20. USDS
+  { id: 'usds-erc20', symbol: 'USDS', name: 'USDS ERC20', network: 'ethereum', icon: 'U', available: true },
+
+  // 21. Chainlink (LINK)
+  { id: 'link-erc20', symbol: 'LINK', name: 'Chainlink LINK ERC20', network: 'ethereum', icon: 'L', available: true },
+  { id: 'link-bep20', symbol: 'LINK', name: 'Chainlink LINK BEP20', network: 'bsc', icon: 'L', available: true },
+
+  // 22. Binance Bridged USDT (BSC-USD)
+  { id: 'bsc-usd', symbol: 'BSC-USD', name: 'Binance Bridged USDT BSC-USD', network: 'bsc', icon: 'B', available: true },
+
+  // 23. LEO Token (LEO)
+  { id: 'leo', symbol: 'LEO', name: 'LEO Token LEO', network: 'ethereum', icon: 'L', available: true },
+
+  // 24. WETH
+  { id: 'weth-erc20', symbol: 'WETH', name: 'WETH ERC20', network: 'ethereum', icon: 'W', available: true },
+  { id: 'weth-bep20', symbol: 'WETH', name: 'WETH BEP20', network: 'bsc', icon: 'W', available: true },
+  { id: 'weth-polygon', symbol: 'WETH', name: 'WETH POLYGON', network: 'polygon', icon: 'W', available: true },
+  { id: 'weth-arb1', symbol: 'WETH', name: 'WETH ARB1', network: 'arbitrum', icon: 'W', available: true },
+
+  // 25. Stellar (XLM)
+  { id: 'xlm', symbol: 'XLM', name: 'Stellar XLM', network: 'stellar', icon: 'X', available: true },
+
+  // 26. Coinbase Wrapped BTC (CBBTC)
+  { id: 'cbbtc', symbol: 'CBBTC', name: 'Coinbase Wrapped BTC CBBTC', network: 'ethereum', icon: 'C', available: true },
+
+  // 27. Zcash (ZFC)
+  { id: 'zfc', symbol: 'ZFC', name: 'Zcash ZFC', network: 'zcash', icon: 'Z', available: true },
+
+  // 28. Sui (SUI)
+  { id: 'sui', symbol: 'SUI', name: 'Sui SUI', network: 'sui', icon: 'S', available: true },
+
+  // 29. Ethena USDe (USDE)
+  { id: 'usde', symbol: 'USDE', name: 'Ethena USDe USDE', network: 'ethereum', icon: 'U', available: true },
+
+  // 30. Avalanche (AVAX)
+  { id: 'avax', symbol: 'AVAX', name: 'Avalanche AVAX', network: 'avax', icon: 'A', available: true },
+
+  // Additional popular tokens
+  { id: 'dai-erc20', symbol: 'DAI', name: 'DAI ERC20', network: 'ethereum', icon: 'D', available: true },
+  { id: 'dai-bep20', symbol: 'DAI', name: 'DAI BEP20', network: 'bsc', icon: 'D', available: true },
+  { id: 'dai-arb1', symbol: 'DAI', name: 'DAI ARB1', network: 'arbitrum', icon: 'D', available: true },
 ]
 
 interface InvoiceCreatorProps {
@@ -68,16 +174,7 @@ function InvoiceCreator({ onCreateInvoice }: InvoiceCreatorProps) {
 
     // Filter by network
     if (selectedNetwork !== 'all') {
-      filtered = filtered.filter((crypto) => {
-        const networkMap: Record<string, string> = {
-          polygon: 'polygon',
-          solana: 'solana',
-          ethereum: 'ethereum',
-          bsc: 'bsc',
-          avax: 'avax',
-        }
-        return crypto.network === networkMap[selectedNetwork]
-      })
+      filtered = filtered.filter((crypto) => crypto.network === selectedNetwork)
     }
 
     return filtered
@@ -125,7 +222,7 @@ function InvoiceCreator({ onCreateInvoice }: InvoiceCreatorProps) {
       onCreateInvoice({
         invoiceId: result.data.id,
         email: email.trim(),
-        amount: parseFloat(amount),
+        amount: parseFloat(result.data.amount), // Используем сумму из ответа сервера (в крипте)
         currency: selectedCrypto,
         paymentAddress: result.data.paymentAddress,
         memo: result.data.memo,
@@ -184,11 +281,10 @@ function InvoiceCreator({ onCreateInvoice }: InvoiceCreatorProps) {
                   setSelectedNetwork(network.id)
                   setSelectedCrypto(null) // Reset selection when network changes
                 }}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  selectedNetwork === network.id
-                    ? 'bg-orange-500 text-white'
-                    : 'bg-[#0a0a0a] text-gray-300 border border-[#2a2a2a] hover:border-orange-500/50'
-                }`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:scale-105 ${selectedNetwork === network.id
+                  ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30'
+                  : 'bg-[#0a0a0a] text-gray-300 border border-[#2a2a2a] hover:border-orange-500/50 hover:text-orange-400'
+                  }`}
               >
                 {network.label}
               </button>
@@ -199,25 +295,24 @@ function InvoiceCreator({ onCreateInvoice }: InvoiceCreatorProps) {
         {/* Crypto Selection */}
         <div className="mb-6">
           <label className="block text-sm text-gray-300 mb-3">{t('select_crypto')}</label>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 max-h-64 overflow-y-auto">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 max-h-96 overflow-y-auto pr-2">
             {filteredCryptos.map((crypto) => (
               <button
                 key={crypto.id}
                 onClick={() => setSelectedCrypto(crypto)}
                 disabled={!crypto.available}
-                className={`p-3 rounded-lg border transition-all text-left ${
-                  selectedCrypto?.id === crypto.id
-                    ? 'border-orange-500 bg-orange-500/10'
-                    : 'border-[#2a2a2a] bg-[#0a0a0a] hover:border-orange-500/50'
-                } ${!crypto.available ? 'opacity-50 cursor-not-allowed' : ''}`}
+                className={`p-3 rounded-lg border transition-all text-left hover:scale-105 ${selectedCrypto?.id === crypto.id
+                  ? 'border-orange-500 bg-orange-500/10 shadow-lg shadow-orange-500/20'
+                  : 'border-[#2a2a2a] bg-[#0a0a0a] hover:border-orange-500/50'
+                  } ${!crypto.available ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-6 h-6 rounded-full bg-gray-700 flex items-center justify-center text-xs font-bold text-white">
-                    {crypto.icon}
+                <div className="flex items-center gap-2">
+                  <CryptoIcon symbol={crypto.symbol} size="md" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-bold text-white truncate">{crypto.symbol}</div>
+                    <div className="text-xs text-gray-400 truncate">{crypto.network.toUpperCase()}</div>
                   </div>
-                  <span className="text-xs text-gray-400">{crypto.symbol}</span>
                 </div>
-                <div className="text-sm text-gray-200 truncate">{crypto.name}</div>
               </button>
             ))}
           </div>

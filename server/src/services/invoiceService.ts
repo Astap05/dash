@@ -2,6 +2,7 @@ import crypto from 'crypto'
 import { logger } from '../utils/logger'
 import { walletService } from './walletService'
 import { blockchainService } from './blockchainService'
+import { priceService } from './priceService'
 import { query, runQuery } from '../db/index'
 
 export interface InvoiceData {
@@ -17,6 +18,8 @@ export interface InvoiceData {
   createdAt: string
   expiresAt: string
   qrCode?: string
+  fiatAmount?: number
+  exchangeRate?: number
 }
 
 export class InvoiceService {
@@ -25,25 +28,33 @@ export class InvoiceService {
    */
   async createInvoice(data: {
     nickname: string
-    amount: number
+    amount: number // Amount in USD
     currency: string
     network: string
     userId?: string
   }): Promise<InvoiceData> {
     try {
       const invoiceId = this.generateInvoiceId()
-      const paymentAddress = await walletService.generatePaymentAddress(invoiceId, data.currency)
+      const paymentAddress = await walletService.generatePaymentAddress(invoiceId, data.currency, data.network)
 
-      // Generate memo for Solana payments
-      const memo = data.network === 'solana' ? this.generateMemo(invoiceId) : null
+      // Convert USD amount to Crypto amount
+      const { cryptoAmount, exchangeRate } = await priceService.convertUsdToCrypto(data.amount, data.currency)
 
-      const expiresAt = new Date(Date.now() + 30 * 60 * 1000) // 30 minutes
+      logger.info(`Converting ${data.amount} USD to ${cryptoAmount} ${data.currency} (Rate: ${exchangeRate})`)
+
+      // Generate memo for networks that require it
+      let memo = null
+      if (['solana', 'ripple', 'stellar', 'cosmos', 'eos', 'hbar', 'ton'].includes(data.network)) {
+        memo = this.generateMemo(invoiceId, data.network)
+      }
+
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000) // 60 minutes
 
       // Insert into database
       runQuery(
         `INSERT INTO invoices (id, user_id, nickname, amount, currency, network, payment_address, memo, expires_at, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-        [invoiceId, data.userId, data.nickname, data.amount, data.currency.toUpperCase(), data.network, paymentAddress, memo, expiresAt.toISOString(), new Date().toISOString(), new Date().toISOString()]
+        [invoiceId, data.userId, data.nickname, cryptoAmount, data.currency.toUpperCase(), data.network, paymentAddress, memo, expiresAt.toISOString(), new Date().toISOString(), new Date().toISOString()]
       )
 
       // Get the inserted invoice
@@ -65,13 +76,15 @@ export class InvoiceService {
         status: result.rows[0].status,
         qrCode: result.rows[0].qr_code,
         expiresAt: result.rows[0].expires_at,
-        createdAt: result.rows[0].created_at
+        createdAt: result.rows[0].created_at,
+        fiatAmount: data.amount,
+        exchangeRate: exchangeRate
       }
 
       // Add address to blockchain monitoring
       blockchainService.addAddressToMonitor(paymentAddress, data.network, invoiceId)
 
-      logger.info(`Created invoice ${invoiceId} for ${data.amount} ${data.currency}`)
+      logger.info(`Created invoice ${invoiceId} for ${cryptoAmount} ${data.currency} (${data.amount} USD)`)
 
       return invoice
     } catch (error) {
@@ -121,12 +134,18 @@ export class InvoiceService {
    */
   async updateInvoiceStatus(invoiceId: string, status: InvoiceData['status']): Promise<boolean> {
     try {
+      // Allow updating from pending OR expired to paid
       const result = runQuery(
-        `UPDATE invoices SET status = $1, updated_at = $2 WHERE id = $3`,
+        `UPDATE invoices SET status = $1, updated_at = $2 WHERE id = $3 AND (status = 'pending' OR status = 'expired')`,
         [status, new Date().toISOString(), invoiceId]
       )
 
       if (result.changes === 0) {
+        // If it's already paid, return true
+        const check = await query('SELECT status FROM invoices WHERE id = $1', [invoiceId])
+        if (check.rows[0]?.status === 'paid' || check.rows[0]?.status === 'confirmed') {
+          return true
+        }
         return false
       }
 
@@ -206,12 +225,29 @@ export class InvoiceService {
   }
 
   /**
-   * Generate memo for Solana payments
+   * Generate memo for specific networks
    */
-  private generateMemo(invoiceId: string): string {
-    // Generate a short numeric memo (5 digits) for easy input
+  private generateMemo(invoiceId: string, network: string): string {
     const timestamp = Date.now()
-    const shortCode = (timestamp % 90000 + 10000).toString() // 5-digit number between 10000-99999
+    const random = Math.floor(Math.random() * 1000)
+
+    // XRP Destination Tag: Must be a 32-bit unsigned integer
+    if (network === 'ripple') {
+      return ((timestamp % 1000000) * 1000 + random).toString().slice(0, 9)
+    }
+
+    // Stellar Memo: Can be ID (uint64) or Text
+    if (network === 'stellar') {
+      return ((timestamp % 1000000) * 1000 + random).toString()
+    }
+
+    // TON Comment
+    if (network === 'ton') {
+      return crypto.createHash('md5').update(invoiceId).digest('hex').substring(0, 8).toUpperCase()
+    }
+
+    // Solana & others
+    const shortCode = (timestamp % 90000 + 10000).toString()
     return shortCode
   }
 
@@ -245,7 +281,6 @@ export class InvoiceService {
   }
 }
 
-// Singleton instance
 export const invoiceService = new InvoiceService()
 
 // Auto cleanup expired invoices every 5 minutes

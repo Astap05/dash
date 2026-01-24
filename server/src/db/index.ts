@@ -1,93 +1,107 @@
 import Database from 'better-sqlite3'
 import path from 'path'
-import fs from 'fs'
+import { logger } from '../utils/logger'
 
-const dbPath = path.join(__dirname, '../../db.sqlite')
-const dbDir = path.dirname(dbPath)
+// Move database to a completely separate directory to avoid triggering tsx watch restarts
+const dbPath = 'c:/Users/Admin/dashboard_data/db.sqlite'
 
-if (!fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true })
-}
+logger.info(`Connecting to SQLite database at: ${dbPath}`)
 
-const db: Database.Database = new Database(dbPath)
+const db = new Database(dbPath)
 
-// Enable WAL mode for better performance
+// Enable WAL mode for better concurrency
 db.pragma('journal_mode = WAL')
 
-// Test the connection
-console.log('Connected to SQLite database')
-
-// Convert PostgreSQL style parameters to SQLite style
-function convertSql(sql: string, params?: any[]): { sql: string, params: any[] } {
-  if (!params || params.length === 0) {
-    return { sql, params: [] }
-  }
-
-  const convertedParams: any[] = []
-  let paramIndex = 1
-  let convertedSql = sql.replace(/\$(\d+)/g, (match, num) => {
-    const index = parseInt(num)
-    if (index <= params.length) {
-      convertedParams.push(params[index - 1])
-      return '?'
-    }
-    return match
-  })
-
-  return { sql: convertedSql, params: convertedParams }
-}
-
-// Query helper function - emulate PostgreSQL result format
-export const query = async (text: string, params?: any[]) => {
+/**
+ * Execute a query and return rows
+ */
+export const query = async (text: string, params: any[] = []) => {
   const start = Date.now()
-  try {
-    const { sql, params: convertedParams } = convertSql(text, params)
-    let stmt
-    if (convertedParams && convertedParams.length > 0) {
-      stmt = db.prepare(sql)
-      const rows = stmt.all(...convertedParams)
-      const duration = Date.now() - start
-      console.log('Executed query', { text, duration, rows: rows.length })
-      return { rows: rows as any[], rowCount: rows.length }
-    } else {
-      stmt = db.prepare(sql)
-      const rows = stmt.all()
-      const duration = Date.now() - start
-      console.log('Executed query', { text, duration, rows: rows.length })
-      return { rows: rows as any[], rowCount: rows.length }
-    }
-  } catch (err) {
-    console.error('Query error', { text, err })
-    throw err
-  }
-}
 
-// For INSERT/UPDATE/DELETE, we need to handle differently
-export const runQuery = (text: string, params?: any[]) => {
-  const start = Date.now()
+  // Convert PostgreSQL style $1, $2 to SQLite style ?
+  const sql = text.replace(/\$(\d+)/g, '?')
+  const convertedParams = params
+
   try {
-    const { sql, params: convertedParams } = convertSql(text, params)
-    console.log('runQuery call:', { originalText: text, params, convertedParams })
     const stmt = db.prepare(sql)
-    let result
-    if (convertedParams && convertedParams.length > 0) {
-      result = stmt.run(...convertedParams)
-    } else {
-      result = stmt.run()
-    }
+    const rows = stmt.all(...convertedParams)
+
     const duration = Date.now() - start
-    console.log('Executed query', { text, duration, changes: result.changes })
-    return result
-  } catch (err) {
-    console.error('Query error', { text, err })
-    throw err
+    // logger.debug(`Executed query { text: '${sql}', duration: ${duration}, rows: ${rows.length} }`)
+
+    return { rows }
+  } catch (error) {
+    logger.error(`Database query error: ${error}`)
+    throw error
   }
 }
 
-// Transaction helper - simplified
-export const getClient = () => ({
-  query: (text: string, params?: any[]) => query(text, params),
-  release: () => {} // No-op for SQLite
-})
+/**
+ * Execute a command (INSERT, UPDATE, DELETE)
+ */
+export const runQuery = (text: string, params: any[] = []) => {
+  const start = Date.now()
+
+  const sql = text.replace(/\$(\d+)/g, '?')
+  const convertedParams = params
+
+  try {
+    const stmt = db.prepare(sql)
+    const result = stmt.run(...convertedParams)
+
+    const duration = Date.now() - start
+    // logger.debug(`Executed query { text: '${sql}', duration: ${duration}, changes: ${result.changes} }`)
+
+    return result
+  } catch (error) {
+    logger.error(`Database runQuery error: ${error}`)
+    throw error
+  }
+}
+
+// Initialize database tables
+export const initDb = () => {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT UNIQUE,
+      password TEXT,
+      nickname TEXT,
+      created_at TEXT,
+      updated_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS invoices (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      nickname TEXT,
+      amount TEXT,
+      currency TEXT,
+      network TEXT,
+      payment_address TEXT,
+      memo TEXT,
+      status TEXT DEFAULT 'pending',
+      qr_code TEXT,
+      expires_at TEXT,
+      created_at TEXT,
+      updated_at TEXT,
+      FOREIGN KEY(user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS transactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      invoice_id TEXT,
+      tx_hash TEXT UNIQUE,
+      amount REAL,
+      status TEXT,
+      confirmations INTEGER DEFAULT 0,
+      created_at TEXT,
+      FOREIGN KEY(invoice_id) REFERENCES invoices(id)
+    );
+  `)
+}
+
+// Run initialization
+initDb()
 
 export default db

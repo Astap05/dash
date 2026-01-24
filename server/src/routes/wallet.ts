@@ -3,6 +3,15 @@ import { walletService } from '../services/walletService'
 import { logger } from '../utils/logger'
 import { query, runQuery } from '../db/index'
 
+interface DBInvoice {
+  id: string
+  amount: string
+  currency: string
+  network: string
+  status: string
+  payment_address?: string
+}
+
 const router = express.Router()
 
 /**
@@ -112,7 +121,7 @@ router.post('/simulate-payment', async (req, res) => {
       })
     }
 
-    const invoice = invoicesResult.rows[0]
+    const invoice = invoicesResult.rows[0] as DBInvoice
 
     // Validate amount (allow small tolerance for testing)
     const expectedAmount = parseFloat(invoice.amount)
@@ -166,6 +175,95 @@ router.post('/simulate-payment', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to simulate payment'
+    })
+  }
+})
+
+/**
+ * Get balances for all generated wallet addresses
+ */
+router.get('/balances', async (req, res) => {
+  try {
+    // Get all unique payment addresses from invoices
+    const addressesResult = await query(
+      'SELECT DISTINCT payment_address, network, currency FROM invoices WHERE payment_address IS NOT NULL',
+      []
+    )
+
+    const addresses = addressesResult.rows as Array<{
+      payment_address: string
+      network: string
+      currency: string
+    }>
+
+    if (addresses.length === 0) {
+      return res.json({
+        success: true,
+        data: []
+      })
+    }
+
+    // Check balances for each address
+    const balancePromises = addresses.map(async (addr) => {
+      try {
+        const balanceResult = await walletService.getAddressBalance(addr.payment_address, addr.network)
+        return {
+          address: addr.payment_address,
+          network: addr.network,
+          currency: addr.currency,
+          balance: balanceResult.balance,
+          error: balanceResult.error,
+          lastChecked: new Date().toISOString()
+        }
+      } catch (error: any) {
+        return {
+          address: addr.payment_address,
+          network: addr.network,
+          currency: addr.currency,
+          balance: '0',
+          error: error.message || 'Failed to check balance',
+          lastChecked: new Date().toISOString()
+        }
+      }
+    })
+
+    // Wait for all balance checks (with timeout to prevent hanging)
+    const balances = await Promise.allSettled(balancePromises)
+
+    const results = balances.map((result, index) => {
+      if (result.status === 'fulfilled') {
+        return result.value
+      } else {
+        // Promise rejected
+        const addr = addresses[index]
+        return {
+          address: addr.payment_address,
+          network: addr.network,
+          currency: addr.currency,
+          balance: '0',
+          error: 'Promise rejected',
+          lastChecked: new Date().toISOString()
+        }
+      }
+    })
+
+    // Filter out zero balances unless they have errors
+    const nonZeroBalances = results.filter(item =>
+      parseFloat(item.balance) > 0 || item.error
+    )
+
+    res.json({
+      success: true,
+      data: nonZeroBalances,
+      totalAddresses: addresses.length,
+      checkedAddresses: results.length
+    })
+
+  } catch (error) {
+    logger.error('Failed to get wallet balances:', error)
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get wallet balances'
     })
   }
 })

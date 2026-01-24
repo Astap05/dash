@@ -28,18 +28,25 @@ export const invoiceCreationSchema = Joi.object({
     }),
 
   currency: Joi.string()
-    .valid('ETH', 'USDT', 'BTC', 'USDC', 'SOL')
+    .valid(
+      'BTC', 'ETH', 'USDT', 'BNB', 'XRP', 'SOL', 'USDC', 'TRX', 'STETH', 'DOGE',
+      'FIGR_HELOC', 'ADA', 'WSTETH', 'XMR', 'WBT', 'WBETH', 'WBTC', 'BCH', 'WEETH', 'USDS',
+      'LINK', 'BSC-USD', 'LEO', 'WETH', 'XLM', 'CBBTC', 'ZFC', 'SUI', 'USDE', 'AVAX', 'DAI'
+    )
     .required()
     .messages({
-      'any.only': 'Currency must be one of: ETH, USDT, BTC, USDC, SOL',
+      'any.only': 'Currency must be one of the supported cryptocurrencies',
       'any.required': 'Currency is required'
     }),
 
   network: Joi.string()
-    .valid('ethereum', 'polygon', 'bsc', 'arbitrum', 'solana', 'tron', 'bitcoin', 'avax')
+    .valid(
+      'ethereum', 'bsc', 'polygon', 'solana', 'arbitrum', 'avax', 'tron', 'bitcoin',
+      'ripple', 'dogecoin', 'cardano', 'monero', 'bitcoincash', 'stellar', 'zcash', 'sui'
+    )
     .required()
     .messages({
-      'any.only': 'Network must be one of: ethereum, polygon, bsc, arbitrum, solana, tron, bitcoin, avax',
+      'any.only': 'Network must be one of the supported blockchain networks',
       'any.required': 'Network is required'
     })
 })

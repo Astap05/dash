@@ -1,30 +1,77 @@
 import { ethers } from 'ethers'
 import { Connection } from '@solana/web3.js'
 import { logger } from '../utils/logger'
-import { query } from '../db/index'
+import { query, runQuery } from '../db/index'
 import { BlockchainConfig, BLOCKCHAIN_CONFIGS, getBlockchainConfig } from '../types/blockchain'
+import axios from 'axios'
+import fs from 'fs'
+import path from 'path'
 
 interface MonitoredAddress {
   address: string
   network: string
-  invoiceId: string
+}
+
+interface DBInvoice {
+  id: string
+  amount: string
+  memo: string
+  status: string
+  payment_address?: string
+  network?: string
+}
+
+// Move log file to a completely separate directory to avoid triggering tsx watch restarts
+const LOG_FILE = 'c:/Users/Admin/dashboard_data/blockchain-monitor.log'
+
+function debugLog(msg: string) {
+  const timestamp = new Date().toISOString()
+  const line = `[${timestamp}] ${msg}\n`
+  try {
+    fs.appendFileSync(LOG_FILE, line)
+  } catch (e) { }
+  console.log(line.trim())
 }
 
 export class BlockchainService {
   private providers: Map<string, ethers.JsonRpcProvider | Connection> = new Map()
-  private monitoredAddresses: Set<MonitoredAddress> = new Set()
+  private monitoredAddresses: Set<string> = new Set()
+  private isChecking: boolean = false
+  private failedAddresses: Map<string, number> = new Map()
+  private lastLedgerSequence: number = 0
 
   constructor() {
-    // Initialize providers for all supported networks
+    debugLog('BlockchainService initializing...')
     this.initializeProviders()
 
-    // Test connections (don't throw on failure for demo)
-    this.testConnections().catch((error: any) => {
-      logger.warn('Blockchain connection test failed, continuing without blockchain monitoring:', error.message)
+    this.loadPendingInvoices().then(() => {
+      debugLog('Initial invoices loaded.')
+      this.checkPendingPayments()
+    }).catch((error: any) => {
+      debugLog(`Failed to load pending invoices: ${error.message}`)
     })
 
-    // Start monitoring
     this.startMonitoring()
+  }
+
+  private async loadPendingInvoices() {
+    try {
+      const result = await query(
+        "SELECT payment_address, network FROM invoices WHERE status = 'pending' OR status = 'expired'",
+        []
+      )
+
+      const rows = result.rows as DBInvoice[]
+      debugLog(`Found ${rows.length} invoices in DB to monitor`)
+
+      for (const row of rows) {
+        if (row.payment_address && row.network) {
+          this.addAddressToMonitor(row.payment_address, row.network)
+        }
+      }
+    } catch (error: any) {
+      debugLog(`Error loading pending invoices: ${error.message}`)
+    }
   }
 
   private initializeProviders() {
@@ -38,398 +85,331 @@ export class BlockchainService {
           const connection = new Connection(config.rpcUrl, 'confirmed')
           this.providers.set(config.id, connection)
         }
-        const networkMode = process.env.USE_TESTNET === 'true' ? 'TESTNET' : 'MAINNET'
-        logger.info(`Initialized provider for ${config.name} (${networkMode})`)
-      } catch (error) {
-        logger.error(`Failed to initialize provider for ${config.name}:`, error)
+      } catch (error: any) {
+        debugLog(`Failed to initialize provider for ${config.name}: ${error.message}`)
       }
     })
   }
 
-  private async testConnections() {
-    for (const [networkId, provider] of this.providers) {
-      try {
-        const config = getBlockchainConfig(networkId)
-        if (config?.isEVM && provider instanceof ethers.JsonRpcProvider) {
-          const blockNumber = await provider.getBlockNumber()
-          logger.info(`Connected to ${config.name}. Current block: ${blockNumber}`)
-        } else if (!config?.isEVM && provider instanceof Connection) {
-          const blockNumber = await provider.getBlockHeight()
-          logger.info(`Connected to ${config?.name || networkId}. Current slot: ${blockNumber}`)
-        }
-      } catch (error) {
-        logger.error(`Failed to connect to ${networkId}:`, error)
-        // Continue with other providers
-      }
-    }
-  }
-
   private startMonitoring() {
-    // Check for new transactions every 30 seconds
     setInterval(() => {
       this.checkPendingPayments()
     }, 30000)
-
-    logger.info('Blockchain monitoring started')
+    debugLog('Monitoring loop started (30s interval)')
   }
 
-  /**
-   * Add address to monitoring list
-   */
-  addAddressToMonitor(address: string, network: string = 'ethereum', invoiceId?: string) {
-    const monitoredAddress: MonitoredAddress = {
-      address: address.toLowerCase(),
-      network,
-      invoiceId: invoiceId || ''
+  addAddressToMonitor(address: string, network: string) {
+    if (!address || !network) return
+    const config = getBlockchainConfig(network)
+    if (!config) return
+
+    if (network === 'ripple' && address.length < 30) return
+    if (network === 'stellar' && address.length < 50) return
+
+    const normalizedAddress = config.isEVM ? address.toLowerCase() : address
+    const key = `${network}:${normalizedAddress}`
+
+    if (!this.monitoredAddresses.has(key)) {
+      this.monitoredAddresses.add(key)
+      debugLog(`[Monitor] Added ${key}`)
     }
-    this.monitoredAddresses.add(monitoredAddress)
-    logger.info(`Added address to monitoring: ${address} on ${network}`)
   }
 
-  /**
-   * Check for payments to monitored addresses
-   */
   private async checkPendingPayments() {
-    try {
-      for (const monitoredAddress of this.monitoredAddresses) {
-        await this.checkAddressPayments(monitoredAddress)
-      }
-    } catch (error) {
-      logger.error('Error checking payments:', error)
+    if (this.isChecking) {
+      debugLog('Check cycle already in progress, skipping...')
+      return
     }
-  }
 
-  /**
-   * Check payments for a specific address
-   */
-  private async checkAddressPayments(monitoredAddress: MonitoredAddress) {
+    this.isChecking = true
     try {
-      const provider = this.providers.get(monitoredAddress.network)
-      if (!provider) {
-        logger.error(`No provider found for network ${monitoredAddress.network}`)
+      const addresses = Array.from(this.monitoredAddresses)
+      if (addresses.length === 0) {
+        this.isChecking = false
         return
       }
 
-      const config = getBlockchainConfig(monitoredAddress.network)
-      if (!config) return
+      // Prioritize master XRP address
+      const masterXRP = 'ripple:rHsMGQEkVNJmpGWs8XUBoTBiAAbwxZN5v3'
+      const sortedAddresses = addresses.sort((a, b) => {
+        if (a === masterXRP) return -1
+        if (b === masterXRP) return 1
+        return 0
+      })
 
-      if (config.isEVM && provider instanceof ethers.JsonRpcProvider) {
-        await this.checkEVMAddressPayments(monitoredAddress, provider)
-      } else if (config.id === 'solana' && provider instanceof Connection) {
-        await this.checkSolanaAddressPayments(monitoredAddress, provider)
-      }
-
-    } catch (error) {
-      logger.error(`Error checking payments for ${monitoredAddress.address}:`, error)
-    }
-  }
-
-  /**
-   * Check EVM payments for a specific address
-   */
-  private async checkEVMAddressPayments(monitoredAddress: MonitoredAddress, provider: ethers.JsonRpcProvider) {
-    try {
-      // Get recent transactions for the address
-      // Note: This is a simplified approach. In production, you might want to use
-      // Etherscan API or more sophisticated monitoring
-
-      const currentBlock = await provider.getBlockNumber()
-      const fromBlock = currentBlock - 100 // Check last 100 blocks
-
-      // Get all invoices for this address
-      const invoicesResult = await query(
-        'SELECT id, amount, currency FROM invoices WHERE payment_address = $1 AND status = $2',
-        [monitoredAddress.address, 'pending']
-      )
-
-      if (invoicesResult.rows.length === 0) {
-        return // No pending invoices for this address
-      }
-
-      // For each invoice, check if payment was received
-      for (const invoice of invoicesResult.rows) {
-        await this.checkEVMInvoicePayment(invoice, fromBlock, currentBlock, provider)
-      }
-
-    } catch (error) {
-      logger.error(`Error checking EVM payments for ${monitoredAddress.address}:`, error)
-    }
-  }
-
-  /**
-   * Check Solana payments for a specific address
-   */
-  private async checkSolanaAddressPayments(monitoredAddress: MonitoredAddress, connection: Connection) {
-    try {
-      // Get recent transactions for the address
-      // Note: This is a simplified approach for Solana
-
-      // Get all invoices for this address
-      const invoicesResult = await query(
-        'SELECT id, amount, currency FROM invoices WHERE payment_address = $1 AND status = $2',
-        [monitoredAddress.address, 'pending']
-      )
-
-      if (invoicesResult.rows.length === 0) {
-        return // No pending invoices for this address
-      }
-
-      // For each invoice, check if payment was received
-      for (const invoice of invoicesResult.rows) {
-        await this.checkSolanaInvoicePayment(invoice, connection)
-      }
-
-    } catch (error) {
-      logger.error(`Error checking Solana payments for ${monitoredAddress.address}:`, error)
-    }
-  }
-
-  /**
-   * Check if EVM payment was received for a specific invoice
-   */
-  private async checkEVMInvoicePayment(invoice: any, fromBlock: number, toBlock: number, provider: ethers.JsonRpcProvider) {
-    try {
-      const config = getBlockchainConfig(invoice.network)
-
-      if (config?.isEVM) {
-        // For native coin transfers, we need to scan blocks for transactions
-        for (let blockNum = fromBlock; blockNum <= toBlock; blockNum++) {
-          try {
-            const block = await provider.getBlock(blockNum, false)
-            if (!block || !block.transactions) continue
-
-            // Get transactions for this block
-            for (const txHash of block.transactions) {
-              const tx = await provider.getTransaction(txHash)
-              if (!tx) continue
-
-              // Check if transaction is to our payment address
-              if (tx.to && tx.to.toLowerCase() === invoice.payment_address.toLowerCase()) {
-                // Check amount (convert to appropriate decimals)
-                const txValue = parseFloat(ethers.formatEther(tx.value))
-
-                if (txValue >= invoice.amount) {
-                  await this.confirmPayment(invoice.id, tx.hash, invoice.amount)
-                  return // Payment found
-                }
-              }
+      // Update current ledger sequence once per cycle for Ripple
+      const hasRipple = sortedAddresses.some(k => k.startsWith('ripple:'))
+      if (hasRipple) {
+        try {
+          const config = getBlockchainConfig('ripple')
+          if (config) {
+            // Force Testnet URL if needed (fix for config loading issue)
+            if (process.env.USE_TESTNET === 'true' && !config.rpcUrl.includes('testnet')) {
+              config.rpcUrl = 'https://testnet.xrpl-labs.com'
+              debugLog('[XRP] Forced Testnet URL')
             }
-          } catch (blockError) {
-            logger.warn(`Error processing block ${blockNum}:`, blockError)
-            continue
+
+            const infoResponse = await axios.post(config.rpcUrl, {
+              method: 'server_info'
+            }, { timeout: 5000 })
+            const seq = infoResponse.data?.result?.info?.validated_ledger?.seq
+            if (seq) {
+              this.lastLedgerSequence = seq
+              // debugLog(`[XRP] Current ledger sequence: ${seq}`)
+            }
           }
+        } catch (e: any) {
+          debugLog(`[XRP] Failed to get server info: ${e.message}`)
         }
       }
 
-    } catch (error) {
-      logger.error(`Error checking EVM payment for invoice ${invoice.id}:`, error)
-    }
-  }
+      debugLog(`--- Starting check cycle for ${sortedAddresses.length} addresses ---`)
 
-  /**
-   * Check if Solana payment was received for a specific invoice
-   */
-  private async checkSolanaInvoicePayment(invoice: any, connection: Connection) {
-    try {
-      // Get recent transactions for the account
-      const pubkey = new (await import('@solana/web3.js')).PublicKey(invoice.payment_address)
-      const signatures = await connection.getConfirmedSignaturesForAddress2(pubkey, { limit: 20 })
+      for (const key of sortedAddresses) {
+        const [network, address] = key.split(':')
 
-      for (const sigInfo of signatures) {
-        try {
-          const tx = await connection.getTransaction(sigInfo.signature, {
-            commitment: 'confirmed',
-            maxSupportedTransactionVersion: 0
-          })
-
-          if (!tx) continue
-
-          // Check if transaction has memo instruction with correct value
-          const hasCorrectMemo = this.checkSolanaTransactionMemo(tx, invoice.memo)
-
-          if (hasCorrectMemo) {
-            // Check if amount matches (simplified check)
-            const receivedAmount = this.getSolanaTransactionAmount(tx, pubkey)
-            const expectedAmount = Math.floor(invoice.amount * 1e9) // Convert SOL to lamports
-
-            if (receivedAmount >= expectedAmount) {
-              await this.confirmPayment(invoice.id, sigInfo.signature, invoice.amount)
-              break // Payment found, stop checking
-            }
-          }
-        } catch (txError) {
-          logger.warn(`Error processing Solana transaction ${sigInfo.signature}:`, txError)
+        // Skip addresses that failed too many times (except master)
+        const fails = this.failedAddresses.get(key) || 0
+        if (fails > 5 && key !== masterXRP) {
           continue
         }
+
+        await this.checkAddressPayments(address, network)
+        // Increased delay to avoid rate limits
+        await new Promise(resolve => setTimeout(resolve, 200))
       }
 
-    } catch (error) {
-      logger.error(`Error checking Solana payment for invoice ${invoice.id}:`, error)
+      debugLog(`--- Check cycle finished ---`)
+    } catch (error: any) {
+      debugLog(`Error in payment check loop: ${error.message}`)
+    } finally {
+      this.isChecking = false
     }
   }
 
-  /**
-   * Check if Solana transaction contains correct memo
-   */
-  private checkSolanaTransactionMemo(tx: any, expectedMemo: string): boolean {
-    if (!tx || !tx.transaction || !tx.transaction.message) return false
-
+  private async checkAddressPayments(address: string, network: string) {
     try {
-      const instructions = tx.transaction.message.instructions
+      const config = getBlockchainConfig(network)
+      if (!config) {
+        debugLog(`[Skip] No config for network ${network}`)
+        return
+      }
 
-      for (const instruction of instructions) {
-        // Check if it's a memo instruction (programId for memo is 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr')
-        if (instruction.programId && instruction.programId.toString() === 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr') {
-          // Decode memo data
-          const memoData = instruction.data
-          if (typeof memoData === 'string') {
-            if (memoData === expectedMemo) {
-              return true
+      if (config.id === 'ripple') {
+        await this.checkRipplePayments(address)
+      } else if (config.id === 'stellar') {
+        await this.checkStellarPayments(address)
+      } else {
+        debugLog(`[${network.toUpperCase()}] Monitoring not implemented yet for ${address}`)
+      }
+    } catch (error: any) {
+      const key = `${network}:${address}`
+      this.failedAddresses.set(key, (this.failedAddresses.get(key) || 0) + 1)
+    }
+  }
+
+  private async checkRipplePayments(address: string) {
+    const key = `ripple:${address}`
+    try {
+      const config = getBlockchainConfig('ripple')
+      if (!config) return
+
+      // Force Testnet URL if needed (double check)
+      if (process.env.USE_TESTNET === 'true' && !config.rpcUrl.includes('testnet')) {
+        config.rpcUrl = 'https://testnet.xrpl-labs.com'
+      }
+
+      // Calculate min ledger to fetch only recent transactions
+      let minLedger = -1
+      if (this.lastLedgerSequence > 0) {
+        // Fetch last ~1000 ledgers (approx 1 hour of history)
+        minLedger = Math.max(0, this.lastLedgerSequence - 1000)
+      }
+
+      const response = await axios.post(config.rpcUrl, {
+        method: 'account_tx',
+        params: [{
+          account: address,
+          ledger_index_min: minLedger,
+          limit: 400,
+          forward: false
+        }]
+      }, { timeout: 30000 })
+
+      const result = response.data?.result
+      if (!result) return
+
+      if (result.error) {
+        if (result.error === 'actNotFound' || result.error === 'accountNotFound') {
+          this.failedAddresses.set(key, 10) // Permanent fail
+        }
+        return
+      }
+
+      // Reset fail count on success
+      this.failedAddresses.set(key, 0)
+
+      const transactions = result.transactions || []
+      if (address === 'rHsMGQEkVNJmpGWs8XUBoTBiAAbwxZN5v3') {
+        debugLog(`[XRP] Found ${transactions.length} transactions for master address (from ledger ${minLedger})`)
+        if (transactions.length === 0 && result.status === 'success') {
+          debugLog(`[XRP] API returned success but no transactions - possible issue with ledger range`)
+        }
+      }
+
+      const pendingInvoicesResult = await query(
+        "SELECT id, amount, memo FROM invoices WHERE network = 'ripple' AND (status = 'pending' OR status = 'expired')",
+        []
+      )
+      const pendingInvoices = pendingInvoicesResult.rows as DBInvoice[]
+      debugLog(`[XRP] Pending invoices: ${pendingInvoices.length}`)
+
+      if (pendingInvoices.length === 0) return
+
+      if (address === 'rHsMGQEkVNJmpGWs8XUBoTBiAAbwxZN5v3') {
+        const tags = pendingInvoices.map(i => i.memo).join(', ')
+        debugLog(`[XRP] Master address (${address}): ${transactions.length} txs. Looking for tags: [${tags}]`)
+      }
+
+      for (const txWrapper of transactions) {
+        const tx = txWrapper.tx || txWrapper
+        const meta = txWrapper.meta || txWrapper.metaData
+
+        if (tx.TransactionType !== 'Payment') continue
+
+        const resultStatus = meta?.TransactionResult || meta?.transaction_result
+        if (resultStatus !== 'tesSUCCESS') continue
+        if (tx.Destination !== address) continue
+
+        const destinationTag = tx.DestinationTag !== undefined ? String(tx.DestinationTag) : null
+
+        const amountDrops = typeof tx.Amount === 'string' ? tx.Amount : (tx.Amount?.value || '0')
+        const amountXRP = parseFloat(amountDrops) / 1000000
+
+        // Debug log incoming payments (reduced logging)
+        if (destinationTag) debugLog(`[XRP Payment] Hash: ${tx.hash}, Tag: ${destinationTag}, Amount: ${amountXRP}`)
+
+        // TEMPORARILY accept payments without tag for testing
+        if (!destinationTag) {
+          debugLog(`[XRP Skip] No destination tag for tx ${tx.hash}`)
+          // continue  // Commented out for testing
+        }
+
+        let foundMatch = false
+        for (const invoice of pendingInvoices) {
+          const invMemo = String(invoice.memo).trim()
+          const txTag = String(destinationTag).trim()
+
+          // Check by tag if present
+          if (destinationTag && invMemo === txTag) {
+            const expectedAmount = parseFloat(invoice.amount)
+            debugLog(`[XRP Match by Tag] Tag: ${txTag}, Amount: ${amountXRP}, Expected: ${expectedAmount}`)
+            if (amountXRP >= expectedAmount * 0.98) {
+              debugLog(`[XRP Success] Invoice ${invoice.id} confirmed by tag!`)
+              await this.confirmPaymentDirectly(invoice.id, tx.hash || tx.TxnSignature, amountXRP)
+              foundMatch = true
+            } else {
+              debugLog(`[XRP Fail] Amount too low for ${invoice.id}: ${amountXRP} < ${expectedAmount}`)
             }
-          } else if (Buffer.isBuffer(memoData) || Array.isArray(memoData)) {
-            const memoString = Buffer.from(memoData).toString('utf8')
-            if (memoString === expectedMemo) {
-              return true
+          }
+          // Check by amount if no tag (TEMPORARY for testing)
+          else if (!destinationTag) {
+            const expectedAmount = parseFloat(invoice.amount)
+            if (Math.abs(amountXRP - expectedAmount) < 0.000001) { // Exact match
+              debugLog(`[XRP Success] Invoice ${invoice.id} confirmed by amount! Hash: ${tx.hash}`)
+              await this.confirmPaymentDirectly(invoice.id, tx.hash || tx.TxnSignature, amountXRP)
+              foundMatch = true
             }
           }
         }
+        if (!foundMatch && !destinationTag) {
+          debugLog(`[XRP No Match] Payment without tag, amount ${amountXRP} not matching any invoice`)
+        }
       }
-    } catch (error) {
-      logger.warn('Error checking memo in transaction:', error)
+    } catch (error: any) {
+      if (error.code === 'ECONNABORTED') {
+        debugLog(`[XRP] Timeout for ${address}`)
+      } else {
+        debugLog(`[XRP] Error for ${address}: ${error.message}`)
+      }
+      this.failedAddresses.set(key, (this.failedAddresses.get(key) || 0) + 1)
     }
-
-    return false
   }
 
-  /**
-   * Get received amount for account in Solana transaction
-   */
-  private getSolanaTransactionAmount(tx: any, accountPubkey: any): number {
-    if (!tx || !tx.meta || !tx.meta.postBalances || !tx.meta.preBalances) return 0
-
-    const accountIndex = tx.transaction.message.accountKeys.findIndex(
-      (key: any) => key.equals(accountPubkey)
-    )
-
-    if (accountIndex === -1) return 0
-
-    const preBalance = tx.meta.preBalances[accountIndex] || 0
-    const postBalance = tx.meta.postBalances[accountIndex] || 0
-
-    return Math.max(0, postBalance - preBalance)
-  }
-
-  /**
-   * Confirm a payment and update invoice status
-   */
-  private async confirmPayment(invoiceId: string, txHash: string, amount: number) {
+  private async checkStellarPayments(address: string) {
+    const key = `stellar:${address}`
     try {
-      // Update invoice status
-      await query(
-        'UPDATE invoices SET status = $1, updated_at = NOW() WHERE id = $2',
-        ['paid', invoiceId]
+      const config = getBlockchainConfig('stellar')
+      if (!config) return
+
+      const response = await axios.get(`${config.rpcUrl}/accounts/${address}/payments?limit=20&order=desc`, { timeout: 20000 })
+      const payments = response.data?._embedded?.records || []
+
+      // Reset fail count on success
+      this.failedAddresses.set(key, 0)
+
+      const pendingInvoicesResult = await query(
+        "SELECT id, amount, memo FROM invoices WHERE network = 'stellar' AND (status = 'pending' OR status = 'expired')",
+        []
       )
+      const pendingInvoices = pendingInvoicesResult.rows as DBInvoice[]
 
-      // Insert transaction record
-      await query(
-        `INSERT INTO transactions (invoice_id, tx_hash, amount, status, confirmations)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [invoiceId, txHash, amount, 'confirmed', 12]
+      if (pendingInvoices.length === 0) return
+
+      for (const payment of payments) {
+        if (payment.type !== 'payment' || !payment.transaction_successful) continue
+
+        const txResponse = await axios.get(payment._links.transaction.href, { timeout: 10000 })
+        const memo = txResponse.data.memo
+        const amount = parseFloat(payment.amount)
+
+        for (const invoice of pendingInvoices) {
+          if (String(invoice.memo).trim() === String(memo).trim() && amount >= parseFloat(invoice.amount) * 0.98) {
+            debugLog(`[Stellar Match] Invoice ${invoice.id} confirmed! Memo: ${memo}, Amount: ${amount}`)
+            await this.confirmPaymentDirectly(invoice.id, payment.transaction_hash, amount)
+          }
+        }
+      }
+    } catch (error: any) {
+      debugLog(`[Stellar] Error for ${address}: ${error.message}`)
+      this.failedAddresses.set(key, (this.failedAddresses.get(key) || 0) + 1)
+    }
+  }
+
+  private async confirmPaymentDirectly(invoiceId: string, txHash: string, amount: number) {
+    try {
+      const check = await query('SELECT status FROM invoices WHERE id = $1', [invoiceId])
+      const rows = check.rows as DBInvoice[]
+      if (rows.length === 0) {
+        debugLog(`[Confirm Error] Invoice ${invoiceId} not found in DB`)
+        return
+      }
+
+      const currentStatus = rows[0].status
+      if (currentStatus === 'paid' || currentStatus === 'confirmed') {
+        debugLog(`[Confirm] Invoice ${invoiceId} already ${currentStatus}`)
+        return
+      }
+
+      const now = new Date().toISOString()
+      debugLog(`[Confirm] Updating ${invoiceId} to paid...`)
+
+      runQuery("UPDATE invoices SET status = 'paid', updated_at = $1 WHERE id = $2", [now, invoiceId])
+
+      const verify = await query('SELECT status FROM invoices WHERE id = $1', [invoiceId])
+      const verifyRows = verify.rows as DBInvoice[]
+      debugLog(`[Confirm] Invoice ${invoiceId} status updated to: ${verifyRows[0]?.status}`)
+
+      runQuery(
+        `INSERT INTO transactions (invoice_id, tx_hash, amount, status, confirmations, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [invoiceId, txHash, amount, 'confirmed', 1, now]
       )
-
-      logger.info(`Payment confirmed for invoice ${invoiceId}: ${amount} ETH, tx: ${txHash}`)
-
-      // TODO: Send email notification
-
-    } catch (error) {
-      logger.error(`Error confirming payment for invoice ${invoiceId}:`, error)
-    }
-  }
-
-  /**
-   * Get transaction details
-   */
-  async getTransaction(txHash: string, network: string = 'ethereum') {
-    try {
-      const provider = this.providers.get(network)
-      if (!provider) {
-        logger.error(`No provider found for network ${network}`)
-        return null
-      }
-
-      const config = getBlockchainConfig(network)
-      if (config?.isEVM && provider instanceof ethers.JsonRpcProvider) {
-        const tx = await provider.getTransaction(txHash)
-        const receipt = await provider.getTransactionReceipt(txHash)
-
-        return {
-          hash: tx?.hash,
-          from: tx?.from,
-          to: tx?.to,
-          value: tx ? ethers.formatEther(tx.value) : '0',
-          gasUsed: receipt?.gasUsed?.toString(),
-          confirmations: receipt?.confirmations || 0,
-          blockNumber: receipt?.blockNumber
-        }
-      } else if (config?.id === 'solana' && provider instanceof Connection) {
-        const tx = await provider.getTransaction(txHash)
-        const blockTime = tx?.blockTime ? new Date(tx.blockTime * 1000) : null
-
-        return {
-          hash: tx?.transaction.signatures[0],
-          from: tx?.transaction.message.accountKeys[0]?.toString(),
-          to: tx?.transaction.message.accountKeys[1]?.toString(),
-          value: tx?.meta?.preBalances[0] ? (tx.meta.preBalances[0] - (tx.meta.postBalances[0] || 0)) / 1e9 : '0',
-          gasUsed: tx?.meta?.fee?.toString(),
-          confirmations: tx?.slot ? 1 : 0, // Simplified
-          blockNumber: tx?.slot
-        }
-      }
-
-      return null
-    } catch (error) {
-      logger.error(`Error getting transaction ${txHash}:`, error)
-      return null
-    }
-  }
-
-  /**
-   * Get current gas price or fee info
-   */
-  async getGasPrice(network: string = 'ethereum') {
-    try {
-      const provider = this.providers.get(network)
-      if (!provider) {
-        logger.error(`No provider found for network ${network}`)
-        return null
-      }
-
-      const config = getBlockchainConfig(network)
-      if (config?.isEVM && provider instanceof ethers.JsonRpcProvider) {
-        const gasPrice = await provider.getFeeData()
-        return {
-          gasPrice: ethers.formatUnits(gasPrice.gasPrice || 0, 'gwei'),
-          maxFeePerGas: gasPrice.maxFeePerGas ? ethers.formatUnits(gasPrice.maxFeePerGas, 'gwei') : null,
-          maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas ? ethers.formatUnits(gasPrice.maxPriorityFeePerGas, 'gwei') : null
-        }
-      } else if (config?.id === 'solana' && provider instanceof Connection) {
-        // For Solana, get recent blockhash fees or recent prioritization fees
-        const fees = await provider.getRecentPrioritizationFees()
-        const avgFee = fees.length > 0 ? fees.reduce((sum, fee) => sum + fee.prioritizationFee, 0) / fees.length : 0
-        return {
-          gasPrice: (avgFee / 1e9).toString(), // Convert lamports to SOL
-          maxFeePerGas: null,
-          maxPriorityFeePerGas: null
-        }
-      }
-
-      return null
-    } catch (error) {
-      logger.error('Error getting gas price:', error)
-      return null
+      debugLog(`[Success] Invoice ${invoiceId} marked as PAID and transaction recorded`)
+    } catch (error: any) {
+      debugLog(`[Confirm Error] ${invoiceId}: ${error.message}`)
     }
   }
 }
 
-// Singleton instance
 export const blockchainService = new BlockchainService()
